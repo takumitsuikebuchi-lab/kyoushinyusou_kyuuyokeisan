@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>きょうしん輸送 給与計算プロトタイプ</title>
+    <meta
+      name="description"
+      content="HRMOS連携を想定した管理者向け 勤怠連動型給与計算システムのプロトタイプ"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <div>
+          <p class="eyebrow">管理者専用</p>
+          <h1>きょうしん輸送 給与計算システム</h1>
+        </div>
+        <div class="status-pill">末日締め / 翌月20日払い</div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="card kpi-grid" id="dashboard"></section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>月次給与計算</h2>
+          <div class="toolbar">
+            <label for="month-select">対象月</label>
+            <select id="month-select"></select>
+          </div>
+        </div>
+        <p class="muted">
+          行クリックで内訳を表示。残業時間を変更すると即時再計算されます（丸めはMF検証結果どおり切り上げ）。
+        </p>
+        <div id="payroll-table" class="table-wrap"></div>
+      </section>
+
+      <section class="card">
+        <h2>従業員一覧</h2>
+        <div id="employee-list" class="employee-grid"></div>
+      </section>
+
+      <section class="card compact">
+        <h2>ロジックメモ（検証反映）</h2>
+        <ul>
+          <li>時間単価 = （基本給 + 職務手当）÷ 月平均所定労働時間</li>
+          <li>残業手当・深夜手当は1円未満切り上げ</li>
+          <li>雇用保険料率は 5.5‰（対象者のみ）</li>
+          <li>介護保険対象（40歳以上）は健保欄に合算表示が発生しうる</li>
+          <li>門馬将太は 2025-11 以降役員扱い（雇用保険なし）</li>
+        </ul>
+      </section>
+    </main>
+
+    <script>
+      const employees = [
+        {
+          id: "watarai-ryuga",
+          name: "渡会流雅",
+          role: "フル勤務ドライバー",
+          department: "運送事業",
+          baseSalary: 210000,
+          jobAllowance: 10000,
+          monthlyStandardHours: 173.0,
+          standardRemuneration: 260000,
+          healthInsurance: 13403,
+          pension: 23790,
+          residentTax: 13000,
+          incomeTax: 5300,
+          employmentInsuranceEligible: true,
+          executive: false,
+          careInsurance: false
+        },
+        {
+          id: "watarai-yoichi",
+          name: "渡会羊一",
+          role: "短時間ドライバー（年金受給）",
+          department: "運送事業",
+          baseSalary: 100000,
+          jobAllowance: 0,
+          monthlyStandardHours: 89.1,
+          standardRemuneration: 104000,
+          healthInsurance: 5361,
+          pension: 0,
+          residentTax: 0,
+          incomeTax: 1100,
+          employmentInsuranceEligible: false,
+          executive: false,
+          careInsurance: false
+        },
+        {
+          id: "monma-shota",
+          name: "門馬将太",
+          role: "役員",
+          department: "運送事業",
+          baseSalary: 370000,
+          jobAllowance: 0,
+          monthlyStandardHours: 173.0,
+          standardRemuneration: 380000,
+          healthInsurance: 22610,
+          pension: 34770,
+          residentTax: 16000,
+          incomeTax: 8200,
+          employmentInsuranceEligible: false,
+          executive: true,
+          careInsurance: true
+        }
+      ];
+
+      const monthlyInputs = {
+        "2025-09": {
+          "watarai-ryuga": { legalOvertime: 60.0, inOvertime: 0, lateNightOvertime: 0, commute: 0 },
+          "watarai-yoichi": { legalOvertime: 6.0, inOvertime: 0, lateNightOvertime: 0, commute: 0 },
+          "monma-shota": { legalOvertime: 0, inOvertime: 0, lateNightOvertime: 0, commute: 0 }
+        },
+        "2025-10": {
+          "watarai-ryuga": { legalOvertime: 76.5, inOvertime: 0, lateNightOvertime: 0, commute: 0 },
+          "watarai-yoichi": { legalOvertime: 4.0, inOvertime: 0, lateNightOvertime: 0, commute: 0 },
+          "monma-shota": { legalOvertime: 0, inOvertime: 0, lateNightOvertime: 0, commute: 0 }
+        },
+        "2025-11": {
+          "watarai-ryuga": { legalOvertime: 58.0, inOvertime: 4.0, lateNightOvertime: 6.0, commute: 0 },
+          "watarai-yoichi": { legalOvertime: 2.0, inOvertime: 0, lateNightOvertime: 0, commute: 0 },
+          "monma-shota": { legalOvertime: 0, inOvertime: 0, lateNightOvertime: 0, commute: 0 }
+        },
+        "2025-12": {
+          "watarai-ryuga": { legalOvertime: 62.0, inOvertime: 2.0, lateNightOvertime: 8.0, commute: 0 },
+          "watarai-yoichi": { legalOvertime: 3.5, inOvertime: 0, lateNightOvertime: 0, commute: 0 },
+          "monma-shota": { legalOvertime: 0, inOvertime: 0, lateNightOvertime: 0, commute: 0 }
+        }
+      };
+
+      const monthSelect = document.getElementById("month-select");
+      const dashboard = document.getElementById("dashboard");
+      const payrollTable = document.getElementById("payroll-table");
+      const employeeList = document.getElementById("employee-list");
+
+      function yen(value) {
+        return new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(value);
+      }
+
+      function ceil(value) {
+        return Math.ceil(value);
+      }
+
+      function calculatePayroll(employee, input) {
+        const hourly = (employee.baseSalary + employee.jobAllowance) / employee.monthlyStandardHours;
+        const overtimePay = ceil(hourly * input.legalOvertime * 1.25);
+        const inOvertimePay = ceil(hourly * input.inOvertime * 1.0);
+        const lateNightPay = ceil(hourly * input.lateNightOvertime * 1.25);
+        const fixedPay = employee.baseSalary + employee.jobAllowance;
+        const gross = fixedPay + overtimePay + inOvertimePay + lateNightPay + input.commute;
+        const employmentInsurance = employee.employmentInsuranceEligible ? ceil(gross * 0.0055) : 0;
+        const deduction =
+          employee.healthInsurance +
+          employee.pension +
+          employee.residentTax +
+          employee.incomeTax +
+          employmentInsurance;
+        const net = gross - deduction;
+
+        return {
+          hourly,
+          overtimePay,
+          inOvertimePay,
+          lateNightPay,
+          gross,
+          deduction,
+          net,
+          employmentInsurance
+        };
+      }
+
+      function renderMonthOptions() {
+        Object.keys(monthlyInputs).forEach((month) => {
+          const option = document.createElement("option");
+          option.value = month;
+          option.textContent = month;
+          monthSelect.appendChild(option);
+        });
+        monthSelect.value = "2025-12";
+      }
+
+      function renderDashboard(month) {
+        const rows = employees.map((employee) => calculatePayroll(employee, monthlyInputs[month][employee.id]));
+        const totalGross = rows.reduce((acc, row) => acc + row.gross, 0);
+        const totalNet = rows.reduce((acc, row) => acc + row.net, 0);
+        const totalOvertimeHours = employees.reduce(
+          (acc, employee) => acc + monthlyInputs[month][employee.id].legalOvertime + monthlyInputs[month][employee.id].inOvertime,
+          0
+        );
+
+        dashboard.innerHTML = `
+          <article>
+            <p class="kpi-label">対象月</p>
+            <p class="kpi-value">${month}</p>
+          </article>
+          <article>
+            <p class="kpi-label">総支給</p>
+            <p class="kpi-value">${yen(totalGross)}</p>
+          </article>
+          <article>
+            <p class="kpi-label">差引支給</p>
+            <p class="kpi-value">${yen(totalNet)}</p>
+          </article>
+          <article>
+            <p class="kpi-label">残業合計時間</p>
+            <p class="kpi-value">${totalOvertimeHours.toFixed(1)}h</p>
+          </article>
+        `;
+      }
+
+      function renderPayroll(month) {
+        payrollTable.innerHTML = "";
+
+        employees.forEach((employee) => {
+          const input = monthlyInputs[month][employee.id];
+          const result = calculatePayroll(employee, input);
+          const detailsId = `${employee.id}-details`;
+
+          const item = document.createElement("article");
+          item.className = "payroll-item";
+          item.innerHTML = `
+            <button class="payroll-row" type="button" aria-controls="${detailsId}" aria-expanded="false">
+              <span class="person">${employee.name}</span>
+              <span>${yen(result.gross)}</span>
+              <span>${yen(result.deduction)}</span>
+              <span class="strong">${yen(result.net)}</span>
+            </button>
+            <div class="payroll-details" id="${detailsId}" hidden>
+              <div class="input-grid">
+                <label>法定外残業(h)
+                  <input type="number" step="0.5" min="0" value="${input.legalOvertime}" data-field="legalOvertime" data-id="${employee.id}" />
+                </label>
+                <label>法定内残業(h)
+                  <input type="number" step="0.5" min="0" value="${input.inOvertime}" data-field="inOvertime" data-id="${employee.id}" />
+                </label>
+                <label>深夜残業(h)
+                  <input type="number" step="0.5" min="0" value="${input.lateNightOvertime}" data-field="lateNightOvertime" data-id="${employee.id}" />
+                </label>
+              </div>
+              <div class="detail-cols">
+                <div>
+                  <h3>支給</h3>
+                  <p>固定給: ${yen(employee.baseSalary + employee.jobAllowance)}</p>
+                  <p>法定外残業: ${yen(result.overtimePay)}</p>
+                  <p>法定内残業: ${yen(result.inOvertimePay)}</p>
+                  <p>深夜残業: ${yen(result.lateNightPay)}</p>
+                </div>
+                <div>
+                  <h3>控除</h3>
+                  <p>健康保険: ${yen(employee.healthInsurance)}</p>
+                  <p>厚生年金: ${yen(employee.pension)}</p>
+                  <p>雇用保険: ${yen(result.employmentInsurance)}</p>
+                  <p>所得税: ${yen(employee.incomeTax)}</p>
+                  <p>住民税: ${yen(employee.residentTax)}</p>
+                </div>
+                <div>
+                  <h3>計算情報</h3>
+                  <p>時間単価: ${result.hourly.toFixed(4)} 円</p>
+                  <p>標準報酬月額: ${yen(employee.standardRemuneration)}</p>
+                  <p>部門: ${employee.department}</p>
+                  <p>職種: ${employee.role}</p>
+                </div>
+              </div>
+            </div>
+          `;
+
+          payrollTable.appendChild(item);
+        });
+
+        document.querySelectorAll(".payroll-row").forEach((button) => {
+          button.addEventListener("click", () => {
+            const target = document.getElementById(button.getAttribute("aria-controls"));
+            const expanded = button.getAttribute("aria-expanded") === "true";
+            button.setAttribute("aria-expanded", String(!expanded));
+            target.hidden = expanded;
+          });
+        });
+
+        document.querySelectorAll("input[data-field]").forEach((input) => {
+          input.addEventListener("input", (event) => {
+            const { id, field } = event.target.dataset;
+            monthlyInputs[month][id][field] = Number(event.target.value || 0);
+            refresh(month);
+          });
+        });
+      }
+
+      function renderEmployees() {
+        employeeList.innerHTML = employees
+          .map((employee) => {
+            const tags = [employee.department, employee.role];
+            if (employee.executive) tags.push("役員");
+            if (employee.careInsurance) tags.push("介護保険対象");
+            return `
+            <article class="employee-card">
+              <h3>${employee.name}</h3>
+              <p>基本給: ${yen(employee.baseSalary)} / 職務手当: ${yen(employee.jobAllowance)}</p>
+              <div class="tags">${tags.map((tag) => `<span>${tag}</span>`).join("")}</div>
+            </article>
+          `;
+          })
+          .join("");
+      }
+
+      function refresh(month) {
+        renderDashboard(month);
+        renderPayroll(month);
+      }
+
+      monthSelect.addEventListener("change", (event) => refresh(event.target.value));
+
+      renderMonthOptions();
+      renderEmployees();
+      refresh(monthSelect.value);
+    </script>
+  </body>
+</html>
