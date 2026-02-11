@@ -388,6 +388,28 @@ const parseMoney = (value) => {
   return Number.isFinite(num) ? num : 0;
 };
 
+const normalizeName = (value) =>
+  String(value || "")
+    .replace(/[ 　]/g, "")
+    .toLowerCase()
+    .trim();
+
+const matchEmployeeIdByHrmosRecord = (hrmosRecord, employees) => {
+  const directId = String(hrmosRecord?.employeeId || "");
+  if (directId && employees.some((e) => String(e.id) === directId)) {
+    return directId;
+  }
+
+  const targetName = normalizeName(hrmosRecord?.employeeName);
+  if (!targetName) return directId || null;
+  const nameMatched = employees.filter((e) => normalizeName(e.name) === targetName);
+  if (nameMatched.length === 1) {
+    return String(nameMatched[0].id);
+  }
+
+  return directId || null;
+};
+
 const parseCsvRows = (text, delimiter = ",") => {
   const rows = [];
   let row = [];
@@ -2146,12 +2168,19 @@ export default function App() {
       setSyncStatus(data.message || "同期完了");
 
       let updatedAttendance = null;
+      const unknownEmployees = [];
 
       // 取得したデータを勤怠テーブルに反映（オブジェクト形式）
       if (res.ok && data.data && Array.isArray(data.data)) {
         const updated = { ...attendance };
         data.data.forEach((hrmosRecord) => {
-          const empId = String(hrmosRecord.employeeId);
+          const matchedId = matchEmployeeIdByHrmosRecord(hrmosRecord, employees);
+          const empId = matchedId || String(hrmosRecord.employeeId);
+          const isKnownEmployee = employees.some((e) => String(e.id) === empId);
+          if (!isKnownEmployee) {
+            unknownEmployees.push(`${hrmosRecord.employeeName || "-"}(${hrmosRecord.employeeId})`);
+          }
+
           // オブジェクト形式で保存（calcPayrollで使用される形式に合わせる）
           updated[empId] = {
             workDays: parseFloat(hrmosRecord.workDays) || 0,
@@ -2166,7 +2195,16 @@ export default function App() {
         setAttendance(updated);
         updatedAttendance = updated;
         setIsAttendanceDirty(true);
-        setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "連携", text: `HRMOSから${data.recordCount}件の勤怠データを取込` }, ...prev].slice(0, 30));
+
+        const warningText = unknownEmployees.length > 0
+          ? `（未登録従業員: ${unknownEmployees.join("、")}）`
+          : "";
+        setSyncStatus((data.message || "同期完了") + warningText);
+        setChangeLogs((prev) => [{
+          at: new Date().toISOString(),
+          type: "連携",
+          text: `HRMOSから${data.recordCount}件の勤怠データを取込${warningText}`,
+        }, ...prev].slice(0, 30));
       }
 
       // 自動計算: 同期で構築したattendanceを直接渡す（React state反映を待たない）
