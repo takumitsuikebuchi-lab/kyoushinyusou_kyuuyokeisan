@@ -1457,7 +1457,7 @@ const normalizeSnapshotRow = (row) => ({
 });
 
 // ===== HistoryPage =====
-const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, onImportHistoryData, companyName, settings }) => {
+const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, onImportHistoryData, companyName, settings, payrollTargetMonth, onRefreshTargetSnapshot }) => {
   const [targetMonth, setTargetMonth] = useState(CURRENT_PROCESSING_MONTH);
   const [selectedFiscalYear, setSelectedFiscalYear] = useState(fiscalYearOf(CURRENT_PROCESSING_MONTH));
   const [importMessage, setImportMessage] = useState("");
@@ -1634,10 +1634,27 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
           <div style={{ fontSize: 13, color: "#94a3b8", padding: 20, textAlign: "center" }}>この月の明細データはありません</div>
         ) : (
           <>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => detailRows.forEach((row) => exportSlipAsPdf({ companyName, month: targetMonth, payDate: selectedHistory?.payDate || "-", row }))}>
-                全員PDF出力
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "#64748b", alignSelf: "center" }}>
+                {targetMonth === payrollTargetMonth
+                  ? "現在対象月は再計算でスナップショット更新できます"
+                  : "過去月は現状データを表示中（再計算対象は現在対象月のみ）"}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={onRefreshTargetSnapshot}
+                  disabled={targetMonth !== payrollTargetMonth}
+                  title={targetMonth !== payrollTargetMonth ? "現在対象月を選択したときのみ実行できます" : ""}
+                >
+                  この月を再計算して更新
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => detailRows.forEach((row) => exportSlipAsPdf({ companyName, month: targetMonth, payDate: selectedHistory?.payDate || "-", row }))}>
+                  全員PDF出力
+                </button>
+              </div>
             </div>
             <div style={{ overflowX: "auto" }}>
               <table className="data-table" style={{ minWidth: 1400 }}>
@@ -2241,7 +2258,8 @@ export default function App() {
         )}
         {page === "history" && (
           <HistoryPage employees={employees} attendance={attendance} monthlyHistory={monthlyHistory}
-            monthlySnapshots={monthlySnapshots} onImportHistoryData={onImportHistoryData} companyName={settings.companyName} settings={settings} />
+            monthlySnapshots={monthlySnapshots} onImportHistoryData={onImportHistoryData} companyName={settings.companyName}
+            settings={settings} payrollTargetMonth={payrollTargetMonth} onRefreshTargetSnapshot={() => onRunAutoCalc(attendance)} />
         )}
         {page === "leave" && <LeavePage employees={employees} paidLeaveBalance={paidLeaveBalance} setPaidLeaveBalance={setPaidLeaveBalance} />}
         {page === "settings" && <SettingsPage settings={settings} setSettings={setSettings} />}
