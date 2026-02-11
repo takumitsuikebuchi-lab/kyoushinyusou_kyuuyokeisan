@@ -103,6 +103,19 @@ function isHolidayWork(segmentTitle) {
 }
 
 /**
+ * MF表示合わせの出勤日判定
+ * 休日系区分の実労働は残業計算には含めるが、出勤日数には含めない
+ */
+function shouldCountWorkDay(record) {
+  const actualWorkMinutes = timeToMinutes(record?.actual_working_hours);
+  if (actualWorkMinutes <= 0) return false;
+
+  const segmentTitle = String(record?.segment_title || '');
+  const holidayKeywords = ['休日', '祝日', '公休', '振替休日'];
+  return !holidayKeywords.some((keyword) => segmentTitle.includes(keyword));
+}
+
+/**
  * HRMOSのデータを給与計算用フォーマットに変換
  * HRMOS APIは日次データを返すので、ユーザーごとに月次集計する
  */
@@ -138,8 +151,8 @@ function transformAttendanceData(hrmosData) {
     const segmentTitle = record.segment_title || '';
     const actualWorkMinutes = timeToMinutes(record.actual_working_hours);
 
-    // 出勤日カウント（休日出勤も含む）
-    if (actualWorkMinutes > 0) {
+    // 出勤日カウント（休日系区分は除外）
+    if (shouldCountWorkDay(record)) {
       user.workDays++;
     }
     user.totalWorkMinutes += actualWorkMinutes;
