@@ -1483,6 +1483,7 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
   const [targetMonth, setTargetMonth] = useState(CURRENT_PROCESSING_MONTH);
   const [selectedFiscalYear, setSelectedFiscalYear] = useState(fiscalYearOf(CURRENT_PROCESSING_MONTH));
   const [importMessage, setImportMessage] = useState("");
+  const [mfCompareReport, setMfCompareReport] = useState(null);
   const monthSet = useMemo(() => new Set(monthlyHistory.map((m) => m.month)), [monthlyHistory]);
   const fiscalYears = Array.from(new Set(monthlyHistory.map((m) => fiscalYearOf(m.month)))).sort((a, b) => a - b);
   const latestFiscalYear = Math.max(fiscalYearOf(CURRENT_PROCESSING_MONTH), ...(fiscalYears.length ? fiscalYears : [fiscalYearOf(CURRENT_PROCESSING_MONTH)]));
@@ -1499,12 +1500,21 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
     }
   }, [months, targetMonth, monthSet]);
 
+  const buildDetailRowsForMonth = (month) => {
+    const rawSnapshot = monthlySnapshots[month] || [];
+    if (rawSnapshot.length > 0) {
+      return rawSnapshot.map(normalizeSnapshotRow);
+    }
+    if (month === CURRENT_PROCESSING_MONTH) {
+      return employees
+        .filter((e) => e.status === "在籍")
+        .map((emp) => toSnapshotRowFromCalc(emp, calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings)));
+    }
+    return [];
+  };
+
   const selectedHistory = monthlyHistory.find((m) => m.month === targetMonth);
-  const rawSnapshot = monthlySnapshots[targetMonth] || [];
-  const detailRows = rawSnapshot.length > 0 ? rawSnapshot.map(normalizeSnapshotRow)
-    : targetMonth === CURRENT_PROCESSING_MONTH
-      ? employees.filter((e) => e.status === "在籍").map((emp) => toSnapshotRowFromCalc(emp, calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings)))
-      : [];
+  const detailRows = buildDetailRowsForMonth(targetMonth);
 
   const detailTotals = detailRows.reduce((acc, row) => ({
     basicPay: acc.basicPay + (row.basicPay || 0), dutyAllowance: acc.dutyAllowance + (row.dutyAllowance || 0),
@@ -1542,6 +1552,60 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
       detail: monmaRow ? `実値: ${money((monmaRow.health || 0) + (monmaRow.kaigo || 0))}` : "対象データなし",
     },
   ];
+
+  const buildMfCompareReport = (currentRows, csvRows, month) => {
+    const toTotals = (rows) => rows.reduce((acc, row) => ({
+      gross: acc.gross + Number(row.gross || 0),
+      totalDeduct: acc.totalDeduct + Number(row.totalDeduct || 0),
+      net: acc.net + Number(row.net || 0),
+    }), { gross: 0, totalDeduct: 0, net: 0 });
+    const toRowsByName = (rows) => {
+      const byName = new Map();
+      rows.forEach((row) => {
+        const key = normalizeName(row.name);
+        if (!key) return;
+        const prev = byName.get(key) || { name: row.name, gross: 0, totalDeduct: 0, net: 0 };
+        byName.set(key, {
+          name: prev.name || row.name,
+          gross: prev.gross + Number(row.gross || 0),
+          totalDeduct: prev.totalDeduct + Number(row.totalDeduct || 0),
+          net: prev.net + Number(row.net || 0),
+        });
+      });
+      return byName;
+    };
+
+    const currentTotals = toTotals(currentRows);
+    const csvTotals = toTotals(csvRows);
+    const diffTotals = {
+      gross: currentTotals.gross - csvTotals.gross,
+      totalDeduct: currentTotals.totalDeduct - csvTotals.totalDeduct,
+      net: currentTotals.net - csvTotals.net,
+    };
+
+    const currentByName = toRowsByName(currentRows);
+    const csvByName = toRowsByName(csvRows);
+    const names = new Set([...currentByName.keys(), ...csvByName.keys()]);
+
+    const perEmployee = Array.from(names)
+      .map((key) => {
+        const cur = currentByName.get(key);
+        const csv = csvByName.get(key);
+        return {
+          name: cur?.name || csv?.name || key,
+          grossDiff: Number(cur?.gross || 0) - Number(csv?.gross || 0),
+          totalDeductDiff: Number(cur?.totalDeduct || 0) - Number(csv?.totalDeduct || 0),
+          netDiff: Number(cur?.net || 0) - Number(csv?.net || 0),
+          missingInCsv: !csv,
+          missingInSystem: !cur,
+        };
+      })
+      .filter((row) =>
+        row.missingInCsv || row.missingInSystem || row.grossDiff !== 0 || row.totalDeductDiff !== 0 || row.netDiff !== 0
+      );
+
+    return { month, currentTotals, csvTotals, diffTotals, perEmployee };
+  };
 
   // CSV import handler (same logic as before, extracted for readability)
   const handleCsvImport = async (e) => {
@@ -1637,9 +1701,17 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
       if (details.length === 0) { skippedByHeader += 1; continue; }
       imported.push({ month, payDate, details, gross: details.reduce((s, d) => s + d.gross, 0), net: details.reduce((s, d) => s + d.net, 0) });
     }
-    if (imported.length === 0) { setImportMessage(`取り込めるCSVが見つかりませんでした（名前不一致:${skippedByName} / ヘッダ不一致:${skippedByHeader}）`); return; }
+    if (imported.length === 0) {
+      setMfCompareReport(null);
+      setImportMessage(`取り込めるCSVが見つかりませんでした（名前不一致:${skippedByName} / ヘッダ不一致:${skippedByHeader}）`);
+      return;
+    }
+
+    const compareTarget = imported.find((item) => item.month === targetMonth) || imported[0];
+    const compareRows = buildDetailRowsForMonth(compareTarget.month);
+    setMfCompareReport(buildMfCompareReport(compareRows, compareTarget.details, compareTarget.month));
     onImportHistoryData(imported);
-    setImportMessage(`${imported.length}ファイルを取り込みました`);
+    setImportMessage(`${imported.length}ファイルを取り込みました（突合: ${monthFullLabel(compareTarget.month)}）`);
   };
 
   const colHeaders = ["従業員", "職種", "基本給", "職務手当", "残業", "法定内", "深夜", "休日", "総支給", "健保", "介護", "厚年", "雇保", "所得税", "住民税", "年調", "控除計", "差引支給", ""];
@@ -1777,6 +1849,51 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
           ))}
         </div>
       </Card>
+
+      {mfCompareReport && (
+        <Card title={`MF元CSV突合レポート（${monthFullLabel(mfCompareReport.month)}）`}>
+          <div className={`alert-box ${mfCompareReport.perEmployee.length === 0 && mfCompareReport.diffTotals.gross === 0 && mfCompareReport.diffTotals.totalDeduct === 0 && mfCompareReport.diffTotals.net === 0 ? "success" : "warning"}`} style={{ marginBottom: 10 }}>
+            <div style={{ fontWeight: 700 }}>
+              {mfCompareReport.perEmployee.length === 0 && mfCompareReport.diffTotals.gross === 0 && mfCompareReport.diffTotals.totalDeduct === 0 && mfCompareReport.diffTotals.net === 0
+                ? "✓ 総額・従業員別の差分はありません"
+                : "! MF元CSVとの間に差分があります"}
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+              総支給差分: {money(mfCompareReport.diffTotals.gross)} / 控除差分: {money(mfCompareReport.diffTotals.totalDeduct)} / 差引差分: {money(mfCompareReport.diffTotals.net)}
+            </div>
+          </div>
+          {mfCompareReport.perEmployee.length > 0 ? (
+            <div style={{ overflowX: "auto" }}>
+              <table className="data-table" style={{ minWidth: 720 }}>
+                <thead>
+                  <tr>
+                    <th>従業員</th>
+                    <th className="right">総支給差分</th>
+                    <th className="right">控除差分</th>
+                    <th className="right">差引差分</th>
+                    <th>備考</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mfCompareReport.perEmployee.map((row) => (
+                    <tr key={`${row.name}-${row.missingInCsv ? "missing-csv" : row.missingInSystem ? "missing-system" : "diff"}`}>
+                      <td>{row.name}</td>
+                      <td className="right mono">{money(row.grossDiff)}</td>
+                      <td className="right mono">{money(row.totalDeductDiff)}</td>
+                      <td className="right mono">{money(row.netDiff)}</td>
+                      <td style={{ fontSize: 12, color: "#64748b" }}>
+                        {row.missingInCsv ? "CSV側に該当従業員なし" : row.missingInSystem ? "システム側に該当従業員なし" : "差分あり"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "#64748b" }}>従業員別の差分はありません。</div>
+          )}
+        </Card>
+      )}
 
       {/* CSV Import */}
       <div style={{ marginTop: 12 }}>
