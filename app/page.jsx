@@ -1517,6 +1517,32 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
     net: acc.net + (row.net || 0),
   }), { basicPay: 0, dutyAllowance: 0, overtimePay: 0, prescribedOvertimePay: 0, nightOvertimePay: 0, holidayPay: 0, gross: 0, health: 0, kaigo: 0, pension: 0, employment: 0, incomeTax: 0, residentTax: 0, yearAdjustment: 0, totalDeduct: 0, net: 0 });
 
+  const findSnapshotByName = (name) => detailRows.find((row) => normalizeName(row.name) === normalizeName(name));
+  const youichiRow = findSnapshotByName("渡曾 羊一");
+  const monmaRow = findSnapshotByName("門馬 将太");
+  const mfChecks = [
+    {
+      label: "渡曾羊一: 厚生年金が0円（年金受給者）",
+      ok: !!youichiRow && Number(youichiRow.pension || 0) === 0,
+      detail: youichiRow ? `実値: ${money(youichiRow.pension || 0)}` : "対象データなし",
+    },
+    {
+      label: "渡曾羊一: 雇用保険が0円",
+      ok: !!youichiRow && Number(youichiRow.employment || 0) === 0,
+      detail: youichiRow ? `実値: ${money(youichiRow.employment || 0)}` : "対象データなし",
+    },
+    {
+      label: "門馬将太: 役員のため雇用保険が0円",
+      ok: !!monmaRow && Number(monmaRow.employment || 0) === 0,
+      detail: monmaRow ? `実値: ${money(monmaRow.employment || 0)}` : "対象データなし",
+    },
+    {
+      label: "門馬将太: 健保+介護の合計が22,610円（2026-01基準）",
+      ok: targetMonth !== "2026-01" || (!!monmaRow && Number(monmaRow.health || 0) + Number(monmaRow.kaigo || 0) === 22610),
+      detail: monmaRow ? `実値: ${money((monmaRow.health || 0) + (monmaRow.kaigo || 0))}` : "対象データなし",
+    },
+  ];
+
   // CSV import handler (same logic as before, extracted for readability)
   const handleCsvImport = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -1738,6 +1764,18 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
             </div>
           </>
         )}
+      </Card>
+
+      {/* MF照合チェック */}
+      <Card title={`${monthFullLabel(targetMonth)} MF照合チェック（主要項目）`}>
+        <div style={{ display: "grid", gap: 8 }}>
+          {mfChecks.map((check) => (
+            <div key={check.label} className={`alert-box ${check.ok ? "success" : "warning"}`} style={{ marginBottom: 0 }}>
+              <div style={{ fontWeight: 700 }}>{check.ok ? "✓" : "!"} {check.label}</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{check.detail}</div>
+            </div>
+          ))}
+        </div>
       </Card>
 
       {/* CSV Import */}
