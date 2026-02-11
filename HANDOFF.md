@@ -1,0 +1,195 @@
+# AI間引き継ぎドキュメント（Handoff）
+
+> **最終更新**: 2026-02-11
+> **最終コミット**: `fix: HRMOS連携の精度向上 — MF給与と計算結果を完全一致させる`
+> **ステータス**: 渡会流雅の2026年1月データでMF給与と全項目完全一致を確認済み
+
+---
+
+## 1. プロジェクト概要
+
+きょうしん輸送の給与計算システム（Next.js 14 + React 18）。
+**目的**: `HRMOS勤怠 → 本システム → 給与明細` でマネーフォワードクラウド給与と同一の計算結果を再現する。
+
+### 技術スタック
+- Next.js 14 (App Router) / React 18
+- データ永続化: `data/payroll-state.json` (JSONファイル)
+- 外部連携: HRMOS勤怠 (IEYASU) REST API
+
+---
+
+## 2. 現在の状況（何が完了し、何が残っているか）
+
+### 完了済み ✅
+
+| 項目 | 詳細 |
+|------|------|
+| HRMOS APIページネーション | `limit=100` + `X-Total-Page` ヘッダーで全ページ取得 |
+| 法定内残業フィールド修正 | `hours_in_statutory_working_hours` (HH:MM形式) を使用 |
+| 令和8年分月額税額表 | 232エントリのテーブルルックアップ + 740,000円以上は電算機計算の特例 |
+| 自動計算のフロントエンド一本化 | `calcPayroll()` のみ使用、APIの重複ロジック廃止 |
+| HRMOS同期→計算のタイミング修正 | `attendanceOverride` で直接渡し、React state未反映問題を回避 |
+| スナップショット後方互換 | `normalizeSnapshotRow()` で旧形式→新形式変換 |
+| 従業員IDの衝突防止 | `number` 空の場合 `hrmos_` プレフィックス付与 |
+
+### 検証結果（渡会流雅 2026年1月）
+
+```
+総支給額:   386,909円 ✅ (MF一致)
+所得税:      11,490円 ✅ (MF一致)
+差引支給額: 323,098円 ✅ (MF一致)
+社会保険計:  39,321円 ✅ (MF一致)
+```
+
+### 残課題 / 今後の作業 📋
+
+| 優先度 | 項目 | 詳細 |
+|--------|------|------|
+| **高** | workDays不一致 | HRMOS=24日 vs MF=22日。土曜出勤のカウント差。給与計算には影響しないが表示が異なる |
+| **高** | 2026-01スナップショットが古い | 現在保存されている2026-01スナップショットは修正前の値(gross=220,000等)。HRMOS同期+確定を再実行すれば更新される |
+| **中** | 渡曾羊一の検証 | MFの渡曾羊一の給与明細と照合が未実施 |
+| **中** | 門馬将太の検証 | 役員(isOfficer=true)の計算ロジック確認 |
+| **中** | 伊達良幸の従業員登録 | HRMOS上にいるが本システム未登録。必要に応じて追加 |
+| **低** | run-monthly APIの整理 | Phase 2でフロント一本化済みだが、旧APIコードが残存。削除または軽量化 |
+| **低** | HRMOS従業員名マッチング | リモートのCodex修正に名前マッチング機能(matchEmployees)があったが、コンフリクト解決時に除外。必要なら再実装 |
+
+---
+
+## 3. アーキテクチャ・ファイル構成
+
+```
+app/
+  page.jsx                          ← メイン（計算ロジック・UI全て）
+  api/
+    hrmos/sync/route.js             ← HRMOS API連携（認証・取得・変換）
+    payroll/run-monthly/route.js    ← 旧自動計算API（現在は未使用）
+    payroll/save/route.js           ← 状態保存
+data/
+  payroll-state.json                ← 全データ永続化
+```
+
+### 計算フロー
+
+```
+HRMOS API → sync/route.js (認証→取得→変換) → page.jsx onHrmosSync()
+  → attendance state更新 → calcPayroll() → スナップショット保存
+```
+
+### 重要な関数
+
+| 関数 | ファイル | 役割 |
+|------|---------|------|
+| `calcPayroll(emp, att, settings)` | page.jsx:33 | **唯一の給与計算エンジン** |
+| `estimateTax(taxable, deps)` | page.jsx:99 | R8月額税額表ルックアップ |
+| `onHrmosSync()` | page.jsx:2124 | HRMOS同期+勤怠データ反映 |
+| `onRunAutoCalc(attendanceOverride?)` | page.jsx:2165 | フロントエンド自動計算 |
+| `transformAttendanceData(hrmosData)` | sync/route.js:109 | HRMOS日次→月次集計 |
+| `fetchMonthlyAttendance(...)` | sync/route.js:34 | ページネーション付きAPI取得 |
+| `normalizeSnapshotRow(row)` | page.jsx:1433 | 旧→新スナップショット変換 |
+
+---
+
+## 4. HRMOS APIフィールドマッピング（実データ検証済み）
+
+> ⚠️ **重要**: フィールド名は実際のHRMOS APIレスポンスで確認済み。推測ではない。
+
+| HRMOSフィールド | 型 | 意味 | マッピング先 |
+|-----------------|-----|------|-------------|
+| `hours_in_statutory_working_hours` | "HH:MM" | **法定内残業（所定外・法定内）** | `prescribedOT` |
+| `excess_of_statutory_working_hours` | "HH:MM" | **法定外残業（平日）** | `legalOT` |
+| `excess_of_statutory_working_hours_in_holidays` | "HH:MM" | 法定外残業（休日） | `legalOT` に加算 |
+| `late_night_overtime_working_hours` | "HH:MM" | **深夜残業** | `nightOT` |
+| `hours_in_statutory_working_hours_in_holidays` | "HH:MM" | 休日法定内労働 | `holidayOT` |
+| `actual_working_hours` | "HH:MM" | 実労働時間 | workDays判定に使用 |
+| `hours_in_prescribed_working_hours` | "HH:MM" | 所定内労働時間 | 未使用 |
+| `daytime_prescribed_work_time` | number(秒) | 所定内労働時間(秒) | **使用しない**（25200=7h） |
+| `segment_title` | string | 勤務区分名 | 休日/有給/欠勤判定 |
+| `number` | string | HRMOS従業員番号 | employeeId |
+| `user_id` | number | HRMOSユーザーID | フォールバックID |
+
+### 残業の計算方式（MFと同一）
+
+```
+法定外残業手当 = hourly × legalOT × 1.25
+法定内残業手当 = hourly × prescribedOT × 1.00
+深夜残業手当   = hourly × nightOT × 1.25
+休日労働手当   = hourly × holidayOT × 1.35
+hourly = (basicPay + dutyAllowance) / avgMonthlyHours
+```
+
+---
+
+## 5. 税額計算
+
+### 令和8年分 月額税額表（`estimateTax` 関数）
+
+- **105,000円未満**: 税額0
+- **105,000〜740,000円未満**: `TAX_TABLE_R8` 配列（232エントリ）でテーブルルックアップ
+- **740,000円以上**: 電算機計算の特例（R8年分、基礎控除48,334円/月）
+- **扶養控除**: 1人あたり1,610円を基本税額から減額
+
+### 社会保険料
+
+```
+健康保険 = insRound(stdMonthly × 5.155%)
+介護保険 = insRound(stdMonthly × 0.795%)  ※hasKaigo=trueの場合のみ
+厚生年金 = insRound(stdMonthly × 9.15%)   ※hasPension=trueの場合のみ
+雇用保険 = insRound(gross × 0.55%)        ※hasEmployment=trueの場合のみ
+```
+
+`insRound` = 五捨五超入（50銭以下切捨て、50銭超切上げ）
+
+---
+
+## 6. 従業員データ
+
+| ID | 名前 | 基本給 | 職務手当 | 月平均H | 標準報酬 | 備考 |
+|----|------|--------|----------|---------|----------|------|
+| 3 | 渡会流雅 | 210,000 | 10,000 | 173 | 260,000 | ドライバー、検証済み |
+| 22 | 渡曾羊一 | 100,000 | 0 | 89.1 | 104,000 | 短時間勤務、年金受給者 |
+| 20 | 門馬将太 | 370,000 | 0 | 173 | 380,000 | 役員、介護保険あり |
+
+### HRMOS IDマッピング
+
+| 本システムID | HRMOSユーザーID | HRMOS number | 名前 |
+|-------------|----------------|-------------|------|
+| 3 | 7 | 3 | 渡会流雅 |
+| 22 | 21 | 22 | 渡曾羊一 |
+| 20 | 25 | 20 | 門馬将太 |
+| (未登録) | 22 | (空) | 伊達良幸 → hrmos_22 |
+
+---
+
+## 7. 開発環境
+
+```bash
+# 開発サーバー起動
+cd "マイドライブ/Arenge Work/システム関係/給与計算システム"
+npm run dev
+# → http://localhost:3000
+
+# HRMOS同期テスト（API直接呼び出し）
+curl -s -X POST http://localhost:3000/api/hrmos/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"baseUrl":"https://ieyasu.co","companyUrl":"kyou1122_-","apiKey":"[payroll-state.jsonのapiKey]","targetMonth":"2026-01"}'
+```
+
+---
+
+## 8. 過去の落とし穴・注意点
+
+1. **`daytime_prescribed_work_time` は法定内残業ではない** — 所定内労働時間(秒単位)。法定内残業は `hours_in_statutory_working_hours`。
+2. **HRMOS APIのデフォルトlimitは25** — `?limit=100&page=N` が必須。ページネーションなしだと月のデータが欠損する。
+3. **React stateは即座に反映されない** — `setAttendance()` 直後に `attendance` を参照すると古い値。`attendanceOverride` を直接渡す。
+4. **MFは月額税額表を使う** — 電算機計算の特例ではない。特に中間的な金額帯で数千円の差が出る。
+5. **従業員IDの衝突** — HRMOS `number` が空の従業員の `user_id` が他従業員の `number` と偶然一致しうる。
+6. **timeToMinutes は型チェック必須** — HRMOSは同じ概念のフィールドでも "HH:MM" 文字列と秒数(number)が混在する。
+
+---
+
+## 9. 変更履歴
+
+| 日付 | 変更内容 |
+|------|---------|
+| 2026-02-11 | ページネーション対応、法定内残業フィールド修正、R8税額表、フロント一本化、ID衝突防止 |
+| 2026-02-10 | 初期HRMOS連携実装、基本的な勤怠データ取得 |
