@@ -59,20 +59,82 @@ const calcPayroll = (emp, att, settings) => {
   return { hourly: Math.round(hourly * 100) / 100, otLegal, otPrescribed, otNight, otHoliday, gross, health, kaigo, pension, employment, socialTotal, incomeTax, residentTax, totalDeduct, netPay, erHealth, erKaigo, erPension, erChildCare, erEmployment, erTotal, companyCost };
 };
 
+// ===== 令和8年分 月額税額表（甲欄・扶養0人） =====
+// 国税庁「給与所得の源泉徴収税額表（令和8年分）」月額表より
+// [未満, 税額(扶養0人)]  ※105,000円未満は0
+const TAX_TABLE_R8 = [
+  [105000,0],[107000,170],[109000,280],[111000,380],[113000,480],[115000,580],[117000,680],[119000,790],
+  [121000,890],[123000,990],[125000,1090],[127000,1190],[129000,1300],[131000,1400],[133000,1500],[135000,1600],
+  [137000,1710],[139000,1810],[141000,1910],[143000,2010],[145000,2110],[147000,2220],[149000,2320],[151000,2420],
+  [153000,2520],[155000,2620],[157000,2730],[159000,2830],[161000,2910],[163000,2980],[165000,3050],[167000,3120],
+  [169000,3200],[171000,3270],[173000,3340],[175000,3410],[177000,3480],[179000,3550],[181000,3620],[183000,3700],
+  [185000,3770],[187000,3840],[189000,3910],[191000,3980],[193000,4050],[195000,4120],[197000,4200],[199000,4270],
+  [201000,4340],[203000,4410],[205000,4480],[207000,4550],[209000,4630],[211000,4700],[213000,4770],[215000,4840],
+  [217000,4910],[219000,4980],[221000,5050],[224000,5150],[227000,5250],[230000,5360],[233000,5460],[236000,5570],
+  [239000,5680],[242000,5790],[245000,5890],[248000,6000],[251000,6110],[254000,6220],[257000,6320],[260000,6430],
+  [263000,6530],[266000,6650],[269000,6750],[272000,6860],[275000,6960],[278000,7080],[281000,7180],[284000,7290],
+  [287000,7390],[290000,7500],[293000,7610],[296000,7720],[299000,7820],[302000,7930],[305000,8060],[308000,8180],
+  [311000,8300],[314000,8550],[317000,8790],[320000,9040],[323000,9280],[326000,9530],[329000,9770],[332000,10020],
+  [335000,10260],[338000,10510],[341000,10750],[344000,11000],[347000,11240],[350000,11490],[353000,11730],
+  [356000,11980],[359000,12220],[362000,12470],[365000,12710],[368000,12960],[371000,13200],[374000,13450],
+  [377000,13690],[380000,13940],[383000,14180],[386000,14430],[389000,14670],[392000,14920],[395000,15160],
+  [398000,15410],[401000,15650],[404000,15900],[407000,16140],[410000,16390],[413000,16630],[416000,16880],
+  [419000,17120],[422000,17370],[425000,17610],[428000,17860],[431000,18100],[434000,18350],[437000,18590],
+  [440000,18840],[443000,19080],[446000,19330],[449000,19570],[452000,19860],[455000,20350],[458000,20840],
+  [461000,21330],[464000,21820],[467000,22310],[470000,22800],[473000,23290],[476000,23780],[479000,24270],
+  [482000,24760],[485000,25250],[488000,25740],[491000,26230],[494000,26720],[497000,27210],[500000,27700],
+  [503000,28190],[506000,28680],[509000,29170],[512000,29660],[515000,30150],[518000,30640],[521000,31130],
+  [524000,31620],[527000,32110],[530000,32600],[533000,33090],[536000,33580],[539000,34070],[542000,34560],
+  [545000,35050],[548000,35540],[551000,36030],[554000,36570],[557000,37120],[560000,37670],[563000,38230],
+  [566000,38780],[569000,39330],[572000,39880],[575000,40430],[578000,40980],[581000,41530],[584000,42090],
+  [587000,42640],[590000,43190],[593000,43740],[596000,44290],[599000,44840],[602000,45390],[605000,45950],
+  [608000,46500],[611000,47050],[614000,47600],[617000,48150],[620000,48700],[623000,49250],[626000,49800],
+  [629000,50360],[632000,50910],[635000,51460],[638000,52010],[641000,52560],[644000,53110],[647000,53660],
+  [650000,54220],[653000,54770],[656000,55320],[659000,55870],[662000,56420],[665000,56970],[668000,57520],
+  [671000,58070],[674000,58630],[677000,59180],[680000,59730],[683000,60280],[686000,60830],[689000,61380],
+  [692000,61930],[695000,62490],[698000,63040],[701000,63590],[704000,64140],[707000,64690],[710000,65250],
+  [713000,65860],[716000,66480],[719000,67090],[722000,67700],[725000,68320],[728000,68930],[731000,69540],
+  [734000,70150],[737000,70770],[740000,71380],
+];
 const estimateTax = (taxable, deps) => {
   if (taxable <= 0) return 0;
-  const base = [
-    [88000, 0], [89000, 130], [130000, 2120], [162000, 3200], [175000, 4770],
-    [197000, 5480], [222000, 6530], [252000, 8420], [283000, 10120], [312000, 12100],
-    [346000, 14290], [381000, 16950], [428000, 21480], [475000, 26780], [549000, 33220],
-    [645000, 44200], [Infinity, 63700],
-  ];
-  const depReduction = deps * 1580;
-  let tax = 0;
-  for (const [threshold, amount] of base) {
-    if (taxable < threshold) { tax = amount; break; }
+  // 月額税額表によるテーブルルックアップ（扶養0人の税額を基準に扶養控除を適用）
+  let baseTax = 0;
+  if (taxable < 105000) {
+    baseTax = 0;
+  } else if (taxable < 740000) {
+    for (const [threshold, amount] of TAX_TABLE_R8) {
+      if (taxable < threshold) { baseTax = amount; break; }
+    }
+  } else {
+    // 740,000円以上: 電算機計算の特例（令和8年分）にフォールバック
+    // 第1表: 給与所得控除
+    let incDed;
+    if (taxable <= 158333) incDed = 54167;
+    else if (taxable <= 299999) incDed = taxable * 0.30 + 6667;
+    else if (taxable <= 549999) incDed = taxable * 0.20 + 36667;
+    else if (taxable <= 708330) incDed = taxable * 0.10 + 91667;
+    else incDed = 162500;
+    incDed = Math.ceil(incDed);
+    // 第3表: 基礎控除
+    const basicDed = taxable <= 2120833 ? 48334 : taxable <= 2162499 ? 40000 : taxable <= 2204166 ? 26667 : taxable <= 2245833 ? 13334 : 0;
+    const depDed = deps * 31667;
+    const B = Math.max(0, Math.floor(taxable - incDed - basicDed - depDed));
+    // 第4表: 税率
+    let tax;
+    if (B <= 0) tax = 0;
+    else if (B <= 162500) tax = B * 0.05105;
+    else if (B <= 275000) tax = B * 0.10210 - 8296;
+    else if (B <= 579166) tax = B * 0.20420 - 36374;
+    else if (B <= 750000) tax = B * 0.23483 - 54113;
+    else if (B <= 1500000) tax = B * 0.33693 - 130688;
+    else if (B <= 3333333) tax = B * 0.40840 - 237893;
+    else tax = B * 0.45945 - 408061;
+    return Math.round(tax / 10) * 10;
   }
-  return Math.max(0, tax - depReduction);
+  // 扶養親族等1人あたり1,610円を控除
+  const depReduction = deps * 1610;
+  return Math.max(0, baseTax - depReduction);
 };
 
 // ===== 標準報酬月額 等級表（令和2年9月〜） =====
@@ -1371,6 +1433,29 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   );
 };
 
+// 旧APIフォーマット→新フォーマット正規化（後方互換）
+const normalizeSnapshotRow = (row) => ({
+  empId: row.empId ?? row.employeeId,
+  name: row.name ?? row.employeeName,
+  jobType: row.jobType ?? row.dept ?? "",
+  basicPay: row.basicPay || 0,
+  dutyAllowance: row.dutyAllowance || 0,
+  overtimePay: row.overtimePay ?? row.overtimePay ?? 0,
+  prescribedOvertimePay: row.prescribedOvertimePay || 0,
+  nightOvertimePay: row.nightOvertimePay ?? row.lateNightPay ?? 0,
+  holidayPay: row.holidayPay || 0,
+  gross: row.gross ?? row.grossPay ?? 0,
+  health: row.health ?? row.healthInsurance ?? 0,
+  kaigo: row.kaigo || 0,
+  pension: row.pension ?? row.pensionInsurance ?? 0,
+  employment: row.employment ?? row.employmentInsurance ?? 0,
+  incomeTax: row.incomeTax || 0,
+  residentTax: row.residentTax || 0,
+  yearAdjustment: row.yearAdjustment || 0,
+  totalDeduct: row.totalDeduct ?? row.totalDeductions ?? 0,
+  net: row.net ?? row.netPay ?? 0,
+});
+
 // ===== HistoryPage =====
 const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, onImportHistoryData, companyName, settings }) => {
   const [targetMonth, setTargetMonth] = useState(CURRENT_PROCESSING_MONTH);
@@ -1393,8 +1478,8 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
   }, [months, targetMonth, monthSet]);
 
   const selectedHistory = monthlyHistory.find((m) => m.month === targetMonth);
-  const snapshot = monthlySnapshots[targetMonth] || [];
-  const detailRows = snapshot.length > 0 ? snapshot
+  const rawSnapshot = monthlySnapshots[targetMonth] || [];
+  const detailRows = rawSnapshot.length > 0 ? rawSnapshot.map(normalizeSnapshotRow)
     : targetMonth === CURRENT_PROCESSING_MONTH
       ? employees.filter((e) => e.status === "在籍").map((emp) => toSnapshotRowFromCalc(emp, calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings)))
       : [];
@@ -2043,81 +2128,62 @@ export default function App() {
       const data = await res.json();
       setSyncStatus(data.message || "同期完了");
 
+      let updatedAttendance = null;
+
       // 取得したデータを勤怠テーブルに反映（オブジェクト形式）
       if (res.ok && data.data && Array.isArray(data.data)) {
-        console.log('[HRMOS] 取得データ:', data.data);
-        setAttendance((prev) => {
-          const updated = { ...prev };
-          console.log('[HRMOS] 既存勤怠データ:', updated);
-          data.data.forEach((hrmosRecord) => {
-            console.log('[HRMOS] 処理中:', hrmosRecord.employeeName, 'ID:', hrmosRecord.employeeId);
-            const empId = String(hrmosRecord.employeeId);
-            // オブジェクト形式で保存（calcPayrollで使用される形式に合わせる）
-            updated[empId] = {
-              workDays: parseFloat(hrmosRecord.workDays) || 0,
-              legalOT: parseFloat(hrmosRecord.overtimeHours) || 0, // HRMOSの残業時間を法定外残業として扱う
-              prescribedOT: 0,
-              nightOT: parseFloat(hrmosRecord.lateNightHours) || 0,
-              holidayOT: 0,
-              hrmosSync: true,
-              syncedAt: data.syncedAt
-            };
-            console.log('[HRMOS] 反映:', empId, updated[empId]);
-          });
-          return updated;
+        const updated = { ...attendance };
+        data.data.forEach((hrmosRecord) => {
+          const empId = String(hrmosRecord.employeeId);
+          // オブジェクト形式で保存（calcPayrollで使用される形式に合わせる）
+          updated[empId] = {
+            workDays: parseFloat(hrmosRecord.workDays) || 0,
+            legalOT: parseFloat(hrmosRecord.overtimeHours) || 0, // HRMOSの残業時間を法定外残業として扱う
+            prescribedOT: parseFloat(hrmosRecord.prescribedHours) || 0, // 法定内残業（所定外時間）
+            nightOT: parseFloat(hrmosRecord.lateNightHours) || 0,
+            holidayOT: parseFloat(hrmosRecord.holidayHours) || 0, // 休日労働時間
+            hrmosSync: true,
+            syncedAt: data.syncedAt
+          };
         });
+        setAttendance(updated);
+        updatedAttendance = updated;
         setIsAttendanceDirty(true);
         setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "連携", text: `HRMOSから${data.recordCount}件の勤怠データを取込` }, ...prev].slice(0, 30));
       }
 
-      if (res.ok && hrmosSettings.autoCalcEnabled) await onRunAutoCalc();
+      // 自動計算: 同期で構築したattendanceを直接渡す（React state反映を待たない）
+      if (res.ok && hrmosSettings.autoCalcEnabled) {
+        onRunAutoCalc(updatedAttendance);
+      }
     } catch (err) {
       setSyncStatus(`同期失敗: ${err.message}`);
       setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "エラー", text: `HRMOS同期エラー: ${err.message}` }, ...prev].slice(0, 30));
     }
   };
 
-  const onRunAutoCalc = async () => {
+  const onRunAutoCalc = (attendanceOverride) => {
     setCalcStatus("計算実行中...");
     try {
-      const res = await fetch("/api/payroll/run-monthly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: payrollTargetMonth, autoCalcEnabled: hrmosSettings.autoCalcEnabled }) });
-      const data = await res.json();
-      setCalcStatus(data.message || "計算完了");
-      if (res.ok && data.payrolls && data.summary) {
-        console.log("[onRunAutoCalc] API計算結果を使用:", data);
-        // APIから返された計算結果を使用
-        const totalGross = data.summary.totalGross;
-        const totalNet = data.summary.totalNet;
+      const att = attendanceOverride || attendance;
+      const active = employees.filter((e) => e.status === "在籍");
+      const results = active.map((emp) => ({
+        emp,
+        result: calcPayroll(emp, att[emp.id] || EMPTY_ATTENDANCE, settings),
+      }));
 
-        setMonthlyHistory((prev) => upsertMonthHistory(prev, payrollTargetMonth, { payDate: payrollTargetPayDate, gross: totalGross, net: totalNet, status: "計算済", confirmedBy: "-" }));
+      const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
+      const totalNet = results.reduce((s, r) => s + r.result.netPay, 0);
+      const totalOT = results.reduce((s, r) => {
+        const a = att[r.emp.id] || EMPTY_ATTENDANCE;
+        return s + (a.legalOT || 0) + (a.prescribedOT || 0) + (a.nightOT || 0) + (a.holidayOT || 0);
+      }, 0);
 
-        // APIから返されたpayrollsデータをスナップショットに保存
-        const snapshotRows = data.payrolls.map(p => ({
-          empId: p.employeeId,
-          name: p.employeeName,
-          jobType: p.dept,
-          basicPay: p.basicPay,
-          dutyAllowance: p.dutyAllowance,
-          overtimePay: p.overtimePay,
-          prescribedOvertimePay: 0,
-          nightOvertimePay: p.lateNightPay,
-          holidayPay: 0,
-          gross: p.grossPay,
-          health: p.healthInsurance,
-          kaigo: 0,
-          pension: p.pensionInsurance,
-          employment: p.employmentInsurance,
-          incomeTax: p.incomeTax,
-          residentTax: p.residentTax,
-          yearAdjustment: 0,
-          totalDeduct: p.totalDeductions,
-          net: p.netPay
-        }));
-
-        setMonthlySnapshots((prev) => ({ ...prev, [payrollTargetMonth]: snapshotRows }));
-        setIsAttendanceDirty(false);
-        setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "計算", text: `${monthFullLabel(payrollTargetMonth)} を自動計算（残業${data.summary.totalOvertimeHours.toFixed(1)}h）` }, ...prev].slice(0, 30));
-      }
+      setMonthlyHistory((prev) => upsertMonthHistory(prev, payrollTargetMonth, { payDate: payrollTargetPayDate, gross: totalGross, net: totalNet, status: "計算済", confirmedBy: "-" }));
+      setMonthlySnapshots((prev) => ({ ...prev, [payrollTargetMonth]: results.map(({ emp, result }) => toSnapshotRowFromCalc(emp, result)) }));
+      setIsAttendanceDirty(false);
+      setCalcStatus(`${monthFullLabel(payrollTargetMonth)} 自動計算完了`);
+      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "計算", text: `${monthFullLabel(payrollTargetMonth)} を自動計算（残業${totalOT.toFixed(1)}h）` }, ...prev].slice(0, 30));
     } catch (err) {
       console.error("[onRunAutoCalc] エラー:", err);
       setCalcStatus("計算失敗");

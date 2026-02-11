@@ -57,12 +57,12 @@ export async function POST(req) {
 
     // 3. 各従業員の給与計算
     const calculatedPayrolls = employees.map(emp => {
-      // 勤怠データを取得
-      const att = attendance.find(a => String(a.employeeId) === String(emp.id));
+      // 勤怠データを取得（attendanceはオブジェクト形式: { "empId": { workDays, legalOT, ... } }）
+      const att = attendance[String(emp.id)] || null;
 
       const workDays = att?.workDays || 0;
-      const overtimeHours = parseFloat(att?.overtimeHours || 0);
-      const lateNightHours = parseFloat(att?.lateNightHours || 0);
+      const overtimeHours = parseFloat(att?.legalOT || att?.overtimeHours || 0);
+      const lateNightHours = parseFloat(att?.nightOT || att?.lateNightHours || 0);
 
       // 時間単価計算（基本給 + 職務手当） / 月平均所定労働時間
       const hourlyRate = (emp.basicPay + emp.dutyAllowance) / emp.avgMonthlyHours;
