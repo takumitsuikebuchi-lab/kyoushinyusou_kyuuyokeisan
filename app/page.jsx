@@ -1182,6 +1182,46 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
+  const employmentTemplate = (type) => {
+    if (type === "役員") {
+      return {
+        basicPay: 370000,
+        dutyAllowance: 0,
+        stdMonthly: 380000,
+        residentTax: 16000,
+        dependents: 0,
+        hasKaigo: true,
+        hasEmployment: false,
+        hasPension: true,
+        isOfficer: true,
+      };
+    }
+    if (type === "嘱託") {
+      return {
+        basicPay: 100000,
+        dutyAllowance: 0,
+        stdMonthly: 104000,
+        residentTax: 0,
+        dependents: 0,
+        hasKaigo: false,
+        hasEmployment: false,
+        hasPension: false,
+        isOfficer: false,
+      };
+    }
+    return {
+      basicPay: 210000,
+      dutyAllowance: 10000,
+      stdMonthly: 260000,
+      residentTax: 13000,
+      dependents: 0,
+      hasKaigo: false,
+      hasEmployment: true,
+      hasPension: true,
+      isOfficer: false,
+    };
+  };
+
   const updateEmployee = (id, field, value) => {
     setEmployees((prev) => prev.map((e) => e.id === id ? { ...e, [field]: value } : e));
   };
@@ -1194,14 +1234,98 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   }, [newEmploymentType]);
 
   const applyTemplate = () => {
-    if (newEmploymentType === "役員") {
-      setNewBasePay("370000"); setNewDutyAllowance("0"); setNewStdMonthly("380000"); setNewResidentTax("16000"); setNewDependents("0"); setNewHasKaigo(true); setNewHasEmployment(false); setNewHasPension(true);
-    } else if (newEmploymentType === "嘱託") {
-      setNewBasePay("100000"); setNewDutyAllowance("0"); setNewStdMonthly("104000"); setNewResidentTax("0"); setNewDependents("0"); setNewHasKaigo(false); setNewHasEmployment(false); setNewHasPension(false);
-    } else {
-      setNewBasePay("210000"); setNewDutyAllowance("10000"); setNewStdMonthly("260000"); setNewResidentTax("13000"); setNewDependents("0"); setNewHasKaigo(false); setNewHasEmployment(true); setNewHasPension(true);
-    }
+    const t = employmentTemplate(newEmploymentType);
+    setNewBasePay(String(t.basicPay));
+    setNewDutyAllowance(String(t.dutyAllowance));
+    setNewStdMonthly(String(t.stdMonthly));
+    setNewResidentTax(String(t.residentTax));
+    setNewDependents(String(t.dependents));
+    setNewHasKaigo(t.hasKaigo);
+    setNewHasEmployment(t.hasEmployment);
+    setNewHasPension(t.hasPension);
     setOnboardingErrors({});
+  };
+
+  const applyTemplateToEmployee = (id) => {
+    const target = employees.find((e) => String(e.id) === String(id));
+    if (!target) return;
+    const type = target.employmentType || (target.isOfficer ? "役員" : "正社員");
+    const t = employmentTemplate(type);
+    setEmployees((prev) =>
+      prev.map((e) =>
+        String(e.id) === String(id)
+          ? {
+              ...e,
+              ...t,
+              employmentType: type,
+              note: `${e.note || ""}${e.note ? " / " : ""}${type}テンプレ適用(${todayStr})`,
+            }
+          : e
+      )
+    );
+    if (setChangeLogs) {
+      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "更新", text: `${target.name} に${type}テンプレを適用` }, ...prev].slice(0, 30));
+    }
+  };
+
+  const getEmployeeSetupIssues = (emp) => {
+    if (emp.status !== "在籍") return [];
+    const issues = [];
+    if (!emp.joinDate) issues.push("入社日未設定");
+    if (!emp.employmentType) issues.push("雇用区分未設定");
+    if ((emp.basicPay || 0) <= 0) issues.push("基本給未設定");
+    if ((emp.stdMonthly || 0) <= 0) issues.push("標準報酬未設定");
+    if (String(emp.note || "").includes("仮登録")) issues.push("仮登録のまま");
+    if ((emp.employmentType === "役員" || emp.isOfficer) && emp.hasEmployment) issues.push("役員で雇保ON");
+    return issues;
+  };
+
+  const setupPendingEmployees = useMemo(
+    () =>
+      employees
+        .map((emp) => ({ emp, issues: getEmployeeSetupIssues(emp) }))
+        .filter((row) => row.issues.length > 0),
+    [employees]
+  );
+
+  const offboardEmployee = (id) => {
+    const target = employees.find((e) => String(e.id) === String(id));
+    if (!target || target.status !== "在籍") return;
+    setEmployees((prev) =>
+      prev.map((e) =>
+        String(e.id) === String(id)
+          ? {
+              ...e,
+              status: "退職",
+              leaveDate: e.leaveDate || todayStr,
+              hasEmployment: false,
+              note: `${e.note || ""}${e.note ? " / " : ""}退職処理(${todayStr})`,
+            }
+          : e
+      )
+    );
+    if (setChangeLogs) {
+      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "退職", text: `${target.name} を退職処理` }, ...prev].slice(0, 30));
+    }
+  };
+
+  const reactivateEmployee = (id) => {
+    const target = employees.find((e) => String(e.id) === String(id));
+    if (!target || target.status === "在籍") return;
+    setEmployees((prev) =>
+      prev.map((e) =>
+        String(e.id) === String(id)
+          ? {
+              ...e,
+              status: "在籍",
+              note: `${e.note || ""}${e.note ? " / " : ""}在籍へ戻す(${todayStr})`,
+            }
+          : e
+      )
+    );
+    if (setChangeLogs) {
+      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "復帰", text: `${target.name} を在籍に戻す` }, ...prev].slice(0, 30));
+    }
   };
 
   const validateNewHire = () => {
@@ -1229,7 +1353,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
       basicPay: Number(newBasePay) || 0, dutyAllowance: Number(newDutyAllowance) || 0, commuteAllow: Number(newCommuteAllow) || 0, avgMonthlyHours: defaultAvgHours,
       stdMonthly: Number(newStdMonthly) || Number(newBasePay) || 0,
       hasKaigo: newHasKaigo, hasPension: isOfficer ? true : newHasPension, hasEmployment: isOfficer ? false : newHasEmployment,
-      dependents: Number(newDependents) || 0, residentTax: Number(newResidentTax) || 0, isOfficer, status: "在籍",
+      dependents: Number(newDependents) || 0, residentTax: Number(newResidentTax) || 0, isOfficer, status: "在籍", leaveDate: "",
       note: `新規追加 (${new Date().toLocaleDateString("ja-JP")})`,
     };
     setEmployees((prev) => [...prev, newEmployee]);
@@ -1244,12 +1368,14 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     if (moveToPayroll && onGoPayroll) onGoPayroll();
   };
 
-  const toggleStatus = (id) => setEmployees((prev) => prev.map((e) => e.id === id ? { ...e, status: e.status === "在籍" ? "退職" : "在籍" } : e));
   const removeEmployee = (id) => {
     setEmployees((prev) => prev.filter((e) => e.id !== id));
     setAttendance((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setPaidLeaveBalance((prev) => prev.filter((r) => r.empId !== id));
   };
+
+  const activeCount = employees.filter((e) => e.status === "在籍").length;
+  const retiredCount = employees.filter((e) => e.status !== "在籍").length;
 
   const filteredEmployees = employees
     .filter((emp) => activeTab === "在籍者" ? emp.status === "在籍" : emp.status !== "在籍")
@@ -1367,6 +1493,34 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
         </Card>
       )}
 
+      <Card title="入退社ワークフロー" className="" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+          <Badge variant="success">在籍 {activeCount}名</Badge>
+          <Badge variant="default">退職 {retiredCount}名</Badge>
+          <Badge variant={setupPendingEmployees.length > 0 ? "warning" : "success"}>設定未完了 {setupPendingEmployees.length}名</Badge>
+        </div>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+          運用手順: 1) 入社時は新規登録でテンプレ適用 2) 未完了者をこの一覧で埋める 3) 退社時は「退社処理」ボタンを使用
+        </div>
+        {setupPendingEmployees.length > 0 ? (
+          <div style={{ display: "grid", gap: 6 }}>
+            {setupPendingEmployees.slice(0, 8).map(({ emp, issues }) => (
+              <div key={`pending-${emp.id}`} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", background: "#fff7ed" }}>
+                <div style={{ fontSize: 12 }}>
+                  <strong>{emp.name}</strong> : {issues.join(" / ")}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-sm btn-secondary" onClick={() => applyTemplateToEmployee(emp.id)}>テンプレ適用</button>
+                  <button className="btn btn-sm btn-outline" onClick={() => setEditingId(emp.id)}>編集</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "#16a34a" }}>設定未完了の在籍者はいません。</div>
+        )}
+      </Card>
+
       {/* Employee List */}
       <Card>
         <div className="tabs">
@@ -1389,19 +1543,24 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
                 </div>
                 <div className="emp-info">
                   <div>入社: {emp.joinDate || "-"}</div>
+                  <div>退職: {emp.leaveDate || "-"}</div>
                   <div>{emp.employmentType || (emp.isOfficer ? "役員" : "正社員")}</div>
                 </div>
                 <div className="emp-detail">
                   基本給 ¥{fmt(emp.basicPay)} / 標報 ¥{fmt(emp.stdMonthly)}
                   {emp.isOfficer && <Badge variant="warning" style={{ marginLeft: 6 }}>役員</Badge>}
                   {emp.hasKaigo && <Badge variant="danger" style={{ marginLeft: 4 }}>介護</Badge>}
+                  {getEmployeeSetupIssues(emp).length > 0 && <Badge variant="warning" style={{ marginLeft: 4 }}>設定未完了</Badge>}
                 </div>
                 <div className="emp-actions">
                   <button className="btn btn-sm btn-outline" onClick={() => setEditingId(editingId === emp.id ? null : emp.id)}>
                     {editingId === emp.id ? "閉じる" : "編集"}
                   </button>
-                  <button className={`btn btn-sm ${emp.status === "在籍" ? "btn-success" : "btn-secondary"}`} onClick={() => toggleStatus(emp.id)}>
-                    {emp.status}
+                  <button className="btn btn-sm btn-secondary" onClick={() => applyTemplateToEmployee(emp.id)}>
+                    テンプレ
+                  </button>
+                  <button className={`btn btn-sm ${emp.status === "在籍" ? "btn-danger" : "btn-success"}`} onClick={() => (emp.status === "在籍" ? offboardEmployee(emp.id) : reactivateEmployee(emp.id))}>
+                    {emp.status === "在籍" ? "退社処理" : "在籍に戻す"}
                   </button>
                   <button className="btn btn-sm btn-danger" onClick={() => removeEmployee(emp.id)}>削除</button>
                 </div>
@@ -1438,6 +1597,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
                     <label className="form-label">扶養人数<input type="number" min="0" step="1" value={emp.dependents} onChange={(e) => updateEmployeeNum(emp.id, "dependents", e.target.value)} /></label>
                     <label className="form-label">月平均所定労働時間<input type="number" step="0.1" value={emp.avgMonthlyHours} onChange={(e) => updateEmployeeNum(emp.id, "avgMonthlyHours", e.target.value)} /></label>
                     <label className="form-label">入社日<input type="date" value={emp.joinDate || ""} onChange={(e) => updateEmployee(emp.id, "joinDate", e.target.value)} /></label>
+                    <label className="form-label">退職日<input type="date" value={emp.leaveDate || ""} onChange={(e) => updateEmployee(emp.id, "leaveDate", e.target.value)} /></label>
                   </div>
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                     <label className="checkbox-label"><input type="checkbox" checked={emp.hasKaigo} onChange={(e) => updateEmployee(emp.id, "hasKaigo", e.target.checked)} /> 介護保険</label>
