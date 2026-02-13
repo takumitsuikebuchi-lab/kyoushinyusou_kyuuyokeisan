@@ -648,13 +648,14 @@ const buildInsights = (employees, attendance, prevMonthHistory, settings) => {
   });
 
   // 料率変更チェック: 確定済みスナップショットと現在の計算結果に差がないか
+  // 注: gross - net には社保以外（所得税・住民税）も含まれるため概算チェック。
+  // 大きな差（10%以上）がある場合のみ警告して誤検知を減らす。
   if (prevMonthHistory && prevMonthHistory.status === "確定" && prevMonthHistory.gross > 0) {
     const currentResults = active.map((emp) => calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings));
-    const currentSocial = currentResults.reduce((s, r) => s + r.socialTotal, 0);
-    const savedSocial = prevMonthHistory.net ? prevMonthHistory.gross - prevMonthHistory.net : 0;
-    // savedSocial is a rough proxy; better check is if social differs significantly
-    if (savedSocial > 0 && Math.abs(currentSocial - savedSocial) > 100) {
-      insights.push({ type: "warn", text: "直近の確定月と現在の設定で社会保険料の計算結果に差異があります。料率や標報が変更されていないか確認してください。" });
+    const currentTotalDeduct = currentResults.reduce((s, r) => s + r.totalDeduct, 0);
+    const savedTotalDeduct = prevMonthHistory.gross - prevMonthHistory.net;
+    if (savedTotalDeduct > 0 && Math.abs(currentTotalDeduct - savedTotalDeduct) / savedTotalDeduct > 0.1) {
+      insights.push({ type: "warn", text: "直近の確定月と現在の設定で控除額の計算結果に差異があります。料率や標報が変更されていないか確認してください。" });
     }
   }
 
@@ -688,7 +689,7 @@ const Nav = ({ page, setPage }) => {
           </button>
         ))}
       </div>
-      <div className="nav-footer">v3.0 Prototype</div>
+      <div className="nav-footer">v3.1</div>
     </nav>
   );
 };
@@ -809,9 +810,9 @@ const DashboardPage = ({ employees, attendance, payrollMonth, payrollPayDate, pa
       </Card>
 
       {/* Reminders */}
-      <Card title="年次イベント・リマインダー">
+      <Card title={`年次イベント・リマインダー（直近${reminders.length}件）`}>
         {reminders.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>直近のイベントはありません</div>
+          <div className="empty-state"><div className="empty-state-icon">📅</div>直近のイベントはありません</div>
         ) : reminders.map((r, i) => (
           <div key={i} className={`reminder-item${r.urgency === "urgent" ? " reminder-urgent" : r.urgency === "soon" ? " reminder-soon" : ""}`}>
             <span className="reminder-date">あと{r.daysUntil}日</span>
@@ -854,21 +855,23 @@ const PayrollPage = ({
     <div>
       {/* Header */}
       <div className="page-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <h1 className="page-title">月次給与計算</h1>
-          <Badge variant="default">{payrollCycleLabel(payrollMonth, payrollPayDate)}</Badge>
-          <Badge variant={statusBadgeVariant(titleStatus)}>{titleStatus}</Badge>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <h1 className="page-title">月次給与計算</h1>
+            <Badge variant={statusBadgeVariant(titleStatus)}>{titleStatus}</Badge>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{payrollCycleLabel(payrollMonth, payrollPayDate)}</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {payrollStatus === "確定" && !isAttendanceDirty && (
-            <button className="btn btn-secondary" onClick={onUndoConfirm}>確定を取り消す</button>
+            <button className="btn btn-secondary btn-sm" onClick={onUndoConfirm}>確定を取り消す</button>
           )}
           <button
             className={`btn ${hasCriticalChecks ? "btn-secondary" : isAttendanceDirty ? "btn-warning" : "btn-primary"}`}
             onClick={() => { if (!hasCriticalChecks) onConfirmPayroll(results); }}
             disabled={hasCriticalChecks || (payrollStatus === "確定" && !isAttendanceDirty)}
           >
-            {hasCriticalChecks ? "確認項目あり" : isAttendanceDirty ? "再計算して確定" : payrollStatus === "確定" ? "確定済み" : "確定する"}
+            {hasCriticalChecks ? "⚠ 確認項目あり" : isAttendanceDirty ? "再計算して確定" : payrollStatus === "確定" ? "✓ 確定済み" : "確定する"}
           </button>
         </div>
       </div>
@@ -959,6 +962,7 @@ const PayrollPage = ({
                 [`残業手当（${att.legalOT}h×1.25）`, r.otLegal],
                 [`法定内残業（${att.prescribedOT}h×1.00）`, r.otPrescribed],
                 [`深夜残業（${att.nightOT}h×1.25）`, r.otNight],
+                [`休日労働（${att.holidayOT}h×1.35）`, r.otHoliday],
               ].map(([label, val], i) => (
                 <div className="detail-row" key={i}>
                   <span className="label">{label}</span>
@@ -1345,7 +1349,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     const errors = validateNewHire();
     if (Object.keys(errors).length > 0) { setOnboardingErrors(errors); setOnboardingMessage("入力内容を確認してください"); return; }
     setOnboardingErrors({});
-    const nextId = Math.max(0, ...employees.map((e) => e.id)) + 1;
+    const nextId = Math.max(0, ...employees.map((e) => typeof e.id === "number" ? e.id : 0)) + 1;
     const isOfficer = newEmploymentType === "役員";
     const newEmployee = {
       id: nextId, name: newName.trim(), joinDate: newJoinDate, joinFiscalYear: fiscalYearFromDate(newJoinDate),
@@ -1396,7 +1400,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
 
       {/* Onboarding Form (collapsible) */}
       {showForm && (
-        <Card title="新規従業員登録" className="" style={{ marginBottom: 16 }}>
+        <Card title="新規従業員登録">
           <div className="form-grid" style={{ marginBottom: 12 }}>
             <label className="form-label">
               氏名 *
@@ -1493,23 +1497,22 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
         </Card>
       )}
 
-      <Card title="入退社ワークフロー" className="" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+      <Card title="入退社ワークフロー">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           <Badge variant="success">在籍 {activeCount}名</Badge>
-          <Badge variant="default">退職 {retiredCount}名</Badge>
-          <Badge variant={setupPendingEmployees.length > 0 ? "warning" : "success"}>設定未完了 {setupPendingEmployees.length}名</Badge>
-        </div>
-        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
-          運用手順: 1) 入社時は新規登録でテンプレ適用 2) 未完了者をこの一覧で埋める 3) 退社時は「退社処理」ボタンを使用
+          {retiredCount > 0 && <Badge variant="default">退職 {retiredCount}名</Badge>}
+          {setupPendingEmployees.length > 0 && <Badge variant="warning">要対応 {setupPendingEmployees.length}名</Badge>}
         </div>
         {setupPendingEmployees.length > 0 ? (
-          <div style={{ display: "grid", gap: 6 }}>
+          <div>
+            <div className="section-divider">設定未完了の従業員</div>
             {setupPendingEmployees.slice(0, 8).map(({ emp, issues }) => (
-              <div key={`pending-${emp.id}`} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", background: "#fff7ed" }}>
-                <div style={{ fontSize: 12 }}>
-                  <strong>{emp.name}</strong> : {issues.join(" / ")}
+              <div key={`pending-${emp.id}`} className="workflow-card pending">
+                <div className="workflow-card-info">
+                  <strong>{emp.name}</strong>
+                  <span style={{ marginLeft: 6, color: "#92400e" }}>{issues.join(" / ")}</span>
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div className="workflow-card-actions">
                   <button className="btn btn-sm btn-secondary" onClick={() => applyTemplateToEmployee(emp.id)}>テンプレ適用</button>
                   <button className="btn btn-sm btn-outline" onClick={() => setEditingId(emp.id)}>編集</button>
                 </div>
@@ -1517,7 +1520,10 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
             ))}
           </div>
         ) : (
-          <div style={{ fontSize: 12, color: "#16a34a" }}>設定未完了の在籍者はいません。</div>
+          <div className="alert-box success" style={{ marginTop: 0 }}>
+            <div style={{ fontWeight: 700 }}>✓ 全従業員の設定が完了しています</div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>入社時は「新規登録」、退社時は従業員行の「退社処理」ボタンを使用してください</div>
+          </div>
         )}
       </Card>
 
@@ -1537,32 +1543,33 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
             <div key={emp.id}>
               <div className="emp-row">
                 <div>
-                  <div className="emp-name">{emp.name}</div>
-                  {emp.note && <div className="emp-note">{emp.note}</div>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div className="emp-name">{emp.name}</div>
+                    <span className={`status-pill ${emp.status === "在籍" ? "active" : "retired"}`}>
+                      {emp.status === "在籍" ? "在籍" : "退職"}
+                    </span>
+                    {emp.isOfficer && <Badge variant="warning">役員</Badge>}
+                    {getEmployeeSetupIssues(emp).length > 0 && <Badge variant="warning">要設定</Badge>}
+                  </div>
                   <div className="emp-info">{emp.dept} / {emp.jobType}</div>
+                  {emp.note && <div className="emp-note">{emp.note}</div>}
                 </div>
                 <div className="emp-info">
-                  <div>入社: {emp.joinDate || "-"}</div>
-                  <div>退職: {emp.leaveDate || "-"}</div>
-                  <div>{emp.employmentType || (emp.isOfficer ? "役員" : "正社員")}</div>
+                  <div>{emp.employmentType || (emp.isOfficer ? "役員" : "正社員")} / 入社: {emp.joinDate || "-"}</div>
+                  {emp.leaveDate && <div>退職: {emp.leaveDate}</div>}
                 </div>
                 <div className="emp-detail">
                   基本給 ¥{fmt(emp.basicPay)} / 標報 ¥{fmt(emp.stdMonthly)}
-                  {emp.isOfficer && <Badge variant="warning" style={{ marginLeft: 6 }}>役員</Badge>}
                   {emp.hasKaigo && <Badge variant="danger" style={{ marginLeft: 4 }}>介護</Badge>}
-                  {getEmployeeSetupIssues(emp).length > 0 && <Badge variant="warning" style={{ marginLeft: 4 }}>設定未完了</Badge>}
                 </div>
                 <div className="emp-actions">
                   <button className="btn btn-sm btn-outline" onClick={() => setEditingId(editingId === emp.id ? null : emp.id)}>
                     {editingId === emp.id ? "閉じる" : "編集"}
                   </button>
-                  <button className="btn btn-sm btn-secondary" onClick={() => applyTemplateToEmployee(emp.id)}>
-                    テンプレ
-                  </button>
                   <button className={`btn btn-sm ${emp.status === "在籍" ? "btn-danger" : "btn-success"}`} onClick={() => (emp.status === "在籍" ? offboardEmployee(emp.id) : reactivateEmployee(emp.id))}>
                     {emp.status === "在籍" ? "退社処理" : "在籍に戻す"}
                   </button>
-                  <button className="btn btn-sm btn-danger" onClick={() => removeEmployee(emp.id)}>削除</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => { if (window.confirm(`${emp.name} を削除しますか？この操作は元に戻せません。`)) removeEmployee(emp.id); }}>削除</button>
                 </div>
               </div>
               {editingId === emp.id && (
@@ -1622,7 +1629,7 @@ const normalizeSnapshotRow = (row) => ({
   jobType: row.jobType ?? row.dept ?? "",
   basicPay: row.basicPay || 0,
   dutyAllowance: row.dutyAllowance || 0,
-  overtimePay: row.overtimePay ?? row.overtimePay ?? 0,
+  overtimePay: row.overtimePay ?? 0,
   prescribedOvertimePay: row.prescribedOvertimePay || 0,
   nightOvertimePay: row.nightOvertimePay ?? row.lateNightPay ?? 0,
   holidayPay: row.holidayPay || 0,
@@ -1911,26 +1918,24 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
       {/* Detail Table */}
       <Card title={`${monthFullLabel(targetMonth)} 従業員別明細`}>
         {detailRows.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#94a3b8", padding: 20, textAlign: "center" }}>この月の明細データはありません</div>
+          <div className="empty-state"><div className="empty-state-icon">📄</div>この月の明細データはありません<br/><span style={{ fontSize: 11 }}>給与計算を実行すると、ここに明細が表示されます</span></div>
         ) : (
           <>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 12, color: "#64748b", alignSelf: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "#64748b" }}>
                 {targetMonth === payrollTargetMonth
-                  ? "現在対象月は再計算でスナップショット更新できます"
-                  : "過去月は現状データを表示中（再計算対象は現在対象月のみ）"}
+                  ? "現在対象月 — 再計算でスナップショットを更新できます"
+                  : "過去月のスナップショットを表示中"}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 6 }}>
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={onRefreshTargetSnapshot}
                   disabled={targetMonth !== payrollTargetMonth}
                   title={targetMonth !== payrollTargetMonth ? "現在対象月を選択したときのみ実行できます" : ""}
                 >
-                  この月を再計算して更新
+                  再計算
                 </button>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-secondary btn-sm" onClick={() => detailRows.forEach((row) => exportSlipAsPdf({ companyName, month: targetMonth, payDate: selectedHistory?.payDate || "-", row }))}>
                   全員PDF出力
                 </button>
@@ -2074,15 +2079,26 @@ const LeavePage = ({ employees, paidLeaveBalance, setPaidLeaveBalance }) => {
   const updateLeave = (empId, field, value) => {
     setPaidLeaveBalance((prev) => prev.map((r) => r.empId === empId ? { ...r, [field]: Math.max(0, Number(value) || 0) } : r));
   };
+  const activeBalance = paidLeaveBalance.filter((row) => employees.find((e) => e.id === row.empId && e.status === "在籍"));
+  const totalRemaining = activeBalance.reduce((s, row) => s + row.granted + row.carry - row.used, 0);
+  const lowLeaveCount = activeBalance.filter((row) => (row.granted + row.carry - row.used) <= 2).length;
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 20 }}>有給休暇管理</h1>
+      <div className="page-header">
+        <h1 className="page-title">有給休暇管理</h1>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Badge variant="info">在籍{activeBalance.length}名</Badge>
+          <Badge variant="default">残日数合計 {totalRemaining.toFixed(1)}日</Badge>
+          {lowLeaveCount > 0 && <Badge variant="warning">残少 {lowLeaveCount}名</Badge>}
+        </div>
+      </div>
       <Card title="残日数一覧">
         {paidLeaveBalance.map((row) => {
           const emp = employees.find((e) => e.id === row.empId);
           if (!emp) return null;
           const remaining = row.granted + row.carry - row.used;
           const usedRate = Math.min(100, Math.round((row.used / (row.granted + row.carry || 1)) * 100));
+          const remainColor = remaining <= 2 ? "var(--danger)" : remaining <= 5 ? "var(--warning)" : "var(--accent)";
           return (
             <div key={row.empId} className="leave-card">
               <div className="leave-header">
@@ -2090,10 +2106,10 @@ const LeavePage = ({ employees, paidLeaveBalance, setPaidLeaveBalance }) => {
                   <div style={{ fontWeight: 700 }}>{emp.name}</div>
                   <div style={{ fontSize: 11, color: "#94a3b8" }}>{emp.dept} / {emp.jobType}</div>
                 </div>
-                <div style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "#2563eb", fontSize: 18 }}>{remaining.toFixed(1)}<span style={{ fontSize: 12, fontWeight: 500, color: "#64748b" }}>日</span></div>
+                <div style={{ fontFamily: "var(--mono)", fontWeight: 700, color: remainColor, fontSize: 18 }}>{remaining.toFixed(1)}<span style={{ fontSize: 12, fontWeight: 500, color: "#64748b" }}>日残</span></div>
               </div>
               <div className="leave-bar">
-                <div className="leave-bar-fill" style={{ width: `${usedRate}%` }} />
+                <div className="leave-bar-fill" style={{ width: `${usedRate}%`, background: usedRate > 80 ? "var(--success)" : undefined }} />
               </div>
               <div className="leave-edit">
                 <label className="form-label">付与<input type="number" step="0.5" min="0" value={row.granted} onChange={(e) => updateLeave(row.empId, "granted", e.target.value)} /></label>
@@ -2143,7 +2159,7 @@ const SettingsPage = ({ settings, setSettings }) => {
     <div>
       <div className="page-header">
         <h1 className="page-title">マスタ設定</h1>
-        <button className="btn btn-primary" onClick={() => setSavedAt(new Date().toLocaleString("ja-JP"))}>保存</button>
+        <Badge variant="info">自動保存</Badge>
       </div>
 
       {/* タブナビゲーション */}
@@ -2347,6 +2363,7 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [employees, setEmployees] = useState(INITIAL_EMPLOYEES);
   const [attendance, setAttendance] = useState(INITIAL_ATTENDANCE);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [monthlyHistory, setMonthlyHistory] = useState(() =>
     upsertMonthHistory(INITIAL_MONTHLY_HISTORY, CURRENT_PROCESSING_MONTH, { payDate: defaultPayDateStringByMonth(CURRENT_PROCESSING_MONTH, INITIAL_MASTER_SETTINGS.paymentDay), gross: 0, net: 0, confirmedBy: "-", status: "未計算" })
   );

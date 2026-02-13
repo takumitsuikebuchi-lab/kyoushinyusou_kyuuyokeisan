@@ -275,6 +275,14 @@ body {
   font-size: 12px;
 }
 
+.btn-outline {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+
 .btn-warning {
   background: var(--warning);
   color: #fff;
@@ -1124,11 +1132,99 @@ input[type="number"] {
   .month-days-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
+/* ===== Workflow Card ===== */
+.workflow-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  transition: background var(--transition), box-shadow var(--transition);
+}
+
+.workflow-card:hover { box-shadow: var(--shadow-sm); }
+
+.workflow-card + .workflow-card { margin-top: 6px; }
+
+.workflow-card.pending { background: #fff7ed; border-color: #fed7aa; }
+
+.workflow-card-info { font-size: 12px; }
+.workflow-card-info strong { font-weight: 700; }
+
+.workflow-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ===== Onboarding Banner ===== */
+.onboarding-banner {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+  border: 1px solid #bfdbfe;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: #1e40af;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== Status Pill ===== */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.status-pill.active { background: var(--success-soft); color: var(--success); }
+.status-pill.retired { background: #f1f5f9; color: #64748b; }
+
+/* ===== Section Divider ===== */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ===== Empty State ===== */
+.empty-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.empty-state-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 960px) {
   .nav { width: 180px; }
   .detail-panel { grid-template-columns: 1fr; }
   .emp-row { grid-template-columns: 1fr; gap: 6px; }
+  .workflow-card { flex-direction: column; align-items: flex-start; }
 }
 
 @media (max-width: 720px) {
@@ -1142,4 +1238,6 @@ input[type="number"] {
   .form-grid { grid-template-columns: 1fr; }
   .form-row-2col { grid-template-columns: 1fr; }
   .kpi-row { grid-template-columns: 1fr 1fr; }
+  .dash-steps { grid-template-columns: 1fr; }
+  .leave-edit { grid-template-columns: repeat(2, 1fr); }
 }
