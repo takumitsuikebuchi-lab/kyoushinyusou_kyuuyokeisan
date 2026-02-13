@@ -2324,6 +2324,7 @@ export default function App() {
 
       let updatedAttendance = null;
       const unknownEmployees = [];
+      const provisionalEmployees = new Map();
 
       // 取得したデータを勤怠テーブルに反映（オブジェクト形式）
       if (res.ok && data.data && Array.isArray(data.data)) {
@@ -2334,6 +2335,12 @@ export default function App() {
           const isKnownEmployee = employees.some((e) => String(e.id) === empId);
           if (!isKnownEmployee) {
             unknownEmployees.push(`${hrmosRecord.employeeName || "-"}(${hrmosRecord.employeeId})`);
+            if (!provisionalEmployees.has(empId)) {
+              provisionalEmployees.set(empId, {
+                id: empId,
+                name: String(hrmosRecord.employeeName || `HRMOS ${empId}`).trim(),
+              });
+            }
           }
 
           // オブジェクト形式で保存（calcPayrollで使用される形式に合わせる）
@@ -2351,8 +2358,52 @@ export default function App() {
         updatedAttendance = updated;
         setIsAttendanceDirty(true);
 
+        if (provisionalEmployees.size > 0) {
+          const today = new Date().toISOString().slice(0, 10);
+          const defaultAvgHours = Number(settings?.avgMonthlyHoursDefault) || 173.0;
+          const deptDefault = settings?.departments?.[0] || "未設定";
+          const jobTypeDefault = settings?.jobTypes?.[0] || "未設定";
+
+          setEmployees((prev) => {
+            const existingIds = new Set(prev.map((e) => String(e.id)));
+            const additions = Array.from(provisionalEmployees.values())
+              .filter((item) => !existingIds.has(String(item.id)))
+              .map((item) => ({
+                id: item.id,
+                name: item.name,
+                joinDate: "",
+                joinFiscalYear: fiscalYearOf(payrollTargetMonth),
+                employmentType: null,
+                dept: deptDefault,
+                jobType: jobTypeDefault,
+                basicPay: 0,
+                dutyAllowance: 0,
+                commuteAllow: 0,
+                avgMonthlyHours: defaultAvgHours,
+                stdMonthly: 0,
+                hasKaigo: false,
+                hasPension: false,
+                hasEmployment: false,
+                dependents: 0,
+                residentTax: 0,
+                isOfficer: false,
+                status: "在籍",
+                note: `HRMOS連携で自動仮登録 (${today})`,
+              }));
+            return additions.length > 0 ? [...prev, ...additions] : prev;
+          });
+
+          setPaidLeaveBalance((prev) => {
+            const existingIds = new Set(prev.map((row) => String(row.empId)));
+            const additions = Array.from(provisionalEmployees.values())
+              .filter((item) => !existingIds.has(String(item.id)))
+              .map((item) => ({ empId: item.id, granted: 0, used: 0, carry: 0 }));
+            return additions.length > 0 ? [...prev, ...additions] : prev;
+          });
+        }
+
         const warningText = unknownEmployees.length > 0
-          ? `（未登録従業員: ${unknownEmployees.join("、")}）`
+          ? `（仮登録した従業員: ${unknownEmployees.join("、")}）`
           : "";
         setSyncStatus((data.message || "同期完了") + warningText);
         setChangeLogs((prev) => [{
