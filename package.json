@@ -9,7 +9,9 @@
     "lint": "next lint",
     "serve:prod": "bash scripts/run-prod.sh",
     "deploy:local": "bash scripts/deploy-local.sh",
+    "deploy:vercel": "npx vercel --prod",
     "service": "bash scripts/service-launchd.sh",
+    "setup:supabase": "node scripts/setup-supabase.mjs",
     "migrate:state:supabase": "node scripts/migrate-state-to-supabase.mjs"
   },
   "dependencies": {
