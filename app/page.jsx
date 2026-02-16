@@ -3037,7 +3037,7 @@ export default function App() {
         const payload = await res.json();
         const saved = payload?.data;
         if (saved && !cancelled) {
-          setPage(["dashboard", "payroll", "history", "employees", "leave", "settings"].includes(saved.page) ? saved.page : "dashboard");
+          // リロード時は常にダッシュボードから開始（saved.pageは復元しない）
           setEmployees((saved.employees || INITIAL_EMPLOYEES).map((emp) => ({ ...emp, hrmosEmployeeNumber: getEmployeeHrmosNumber(emp) })));
 
           // attendanceが配列形式の場合、オブジェクト形式に変換
@@ -3107,7 +3107,6 @@ export default function App() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            page,
             employees,
             attendance,
             monthlyHistory,
@@ -3140,7 +3139,7 @@ export default function App() {
       } catch { setSaveStatus("保存失敗"); }
     }, 800);
     return () => clearTimeout(timer);
-  }, [isStateHydrated, page, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
+  }, [isStateHydrated, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
 
   const onConfirmPayroll = (results) => {
     const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
