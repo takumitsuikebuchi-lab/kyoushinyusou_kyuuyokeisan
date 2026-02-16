@@ -325,6 +325,8 @@ const toSnapshotRowFromCalc = (emp, result, att) => ({
   employmentType: emp.employmentType || (emp.isOfficer ? "役員" : "正社員"),
   basicPay: emp.basicPay || 0, dutyAllowance: emp.dutyAllowance || 0,
   commuteAllow: emp.commuteAllow || 0,
+  fixedOvertimePay: result.fixedOvertimePay || 0, excessOvertimePay: result.excessOvertimePay || 0,
+  hasFixedOT: result.hasFixedOT || false,
   overtimePay: result.otLegal || 0, prescribedOvertimePay: result.otPrescribed || 0,
   nightOvertimePay: result.otNight || 0, holidayPay: result.otHoliday || 0,
   otAdjust: result.otAdjust || 0, basicPayAdjust: result.basicPayAdj || 0,
@@ -501,6 +503,13 @@ const buildInsights = (employees, attendance, prevMonthHistory, settings, payrol
       insights.push({ type: "warn", text: `${emp.name}: 残業${totalOT}hは上限${limitH}hに到達。36協定違反の可能性があります。` });
     } else if (totalOT >= warnH) {
       insights.push({ type: "warn", text: `${emp.name}: 残業${totalOT}hは警告ライン（${warnH}h）を超えています。` });
+    }
+    // 固定残業超過通知
+    if ((emp.fixedOvertimeHours || 0) > 0) {
+      const actualOT = (att.legalOT || 0) + (att.prescribedOT || 0);
+      if (actualOT > emp.fixedOvertimeHours) {
+        insights.push({ type: "info", text: `${emp.name}: 固定残業${emp.fixedOvertimeHours}hを超過（実${actualOT.toFixed(1)}h）。超過分${(actualOT - emp.fixedOvertimeHours).toFixed(1)}hの残業手当を追加支給します。` });
+      }
     }
   });
 
@@ -806,6 +815,7 @@ const PayrollPage = ({
                     <div style={{ fontWeight: 600 }}>{emp.name}</div>
                     <div style={{ fontSize: 10, color: "#94a3b8" }}>
                       {emp.employmentType || (emp.isOfficer ? "役員" : "正社員")} / {emp.isOfficer ? "役員" : emp.jobType}
+                      {r.hasFixedOT && <span style={{ color: "#6366f1", marginLeft: 4 }}>固定残業{emp.fixedOvertimeHours}h</span>}
                     </div>
                   </td>
                   <td className="right mono">{fmt(emp.basicPay)}</td>
@@ -822,8 +832,8 @@ const PayrollPage = ({
                     <input type="number" step="0.5" value={att.nightOT} className="inline-input"
                       onChange={(e) => updateAtt(emp.id, "nightOT", e.target.value)} onClick={(e) => e.stopPropagation()} />
                   </td>
-                  <td className="right mono" style={{ fontWeight: 600, color: (r.otLegal + r.otPrescribed + r.otNight) > 0 ? "#b45309" : "#cbd5e1" }}>
-                    {fmt(r.otLegal + r.otPrescribed + r.otNight + r.otHoliday)}
+                  <td className="right mono" style={{ fontWeight: 600, color: (r.fixedOvertimePay + r.excessOvertimePay + r.otLegal + r.otPrescribed + r.otNight + r.otHoliday) > 0 ? "#b45309" : "#cbd5e1" }}>
+                    {fmt(r.fixedOvertimePay + r.excessOvertimePay + r.otLegal + r.otPrescribed + r.otNight + r.otHoliday)}
                   </td>
                   <td className="right mono" style={{ fontWeight: 700 }}>{fmt(r.gross)}</td>
                   <td className="right mono deduction">{fmt(r.socialTotal)}</td>
@@ -853,7 +863,7 @@ const PayrollPage = ({
         const selectedRow = results.find((x) => x.emp.id === selected);
         if (!selectedRow) return null;
         const { emp, att, result: r } = selectedRow;
-        const otCalcTotal = r.otLegal + r.otPrescribed + r.otNight + r.otHoliday;
+        const otCalcTotal = r.fixedOvertimePay + r.excessOvertimePay + r.otLegal + r.otPrescribed + r.otNight + r.otHoliday;
         return (
           <div className="detail-panel">
             {/* 勤怠詳細 + 月次調整 */}
@@ -959,8 +969,13 @@ const PayrollPage = ({
                 ...(r.basicPayAdj !== 0 ? [["基本給調整", r.basicPayAdj]] : []),
                 ["職務手当", emp.dutyAllowance],
                 ["通勤手当", emp.commuteAllow],
-                [`残業手当（${att.legalOT}h×1.25）`, r.otLegal],
-                [`法定内残業（${att.prescribedOT}h×1.00）`, r.otPrescribed],
+                ...(r.hasFixedOT ? [
+                  [`固定残業代（${emp.fixedOvertimeHours}h分）`, r.fixedOvertimePay],
+                  ...(r.excessOvertimePay > 0 ? [[`超過残業手当（${Math.max(0, (att.legalOT||0)+(att.prescribedOT||0)-emp.fixedOvertimeHours).toFixed(1)}h×1.25）`, r.excessOvertimePay]] : []),
+                ] : [
+                  [`残業手当（${att.legalOT}h×1.25）`, r.otLegal],
+                  [`法定内残業（${att.prescribedOT}h×1.00）`, r.otPrescribed],
+                ]),
                 [`深夜残業（${att.nightOT}h×1.25）`, r.otNight],
                 [`休日労働（${att.holidayOT}h×1.35）`, r.otHoliday],
                 ...(r.otAdjust !== 0 ? [["残業手当調整", r.otAdjust]] : []),
@@ -978,6 +993,14 @@ const PayrollPage = ({
               <div className="detail-calc">
                 時間単価 = {fmt(emp.basicPay + emp.dutyAllowance)} / {emp.avgMonthlyHours} = {r.hourly.toFixed(4)}円
               </div>
+              {r.hasFixedOT && (
+                <div style={{ fontSize: 11, color: "#6366f1", marginTop: 6, padding: "6px 8px", background: "#eef2ff", borderRadius: 6 }}>
+                  固定残業制: {emp.fixedOvertimeHours}h分 = ¥{fmt(emp.fixedOvertimePay)}（定額）
+                  {(att.legalOT || 0) + (att.prescribedOT || 0) > emp.fixedOvertimeHours
+                    ? ` / 実残業 ${((att.legalOT||0)+(att.prescribedOT||0)).toFixed(1)}h → 超過 ${((att.legalOT||0)+(att.prescribedOT||0)-emp.fixedOvertimeHours).toFixed(1)}h分を追加支給`
+                    : ` / 実残業 ${((att.legalOT||0)+(att.prescribedOT||0)).toFixed(1)}h（固定時間内）`}
+                </div>
+              )}
             </Card>
             <Card title={`${emp.name} 控除内訳`}>
               <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
@@ -1206,6 +1229,13 @@ const PayrollPage = ({
                   <li>休日残業（法定休日の労働）… <strong>×1.35</strong></li>
                 </ul>
               </li>
+              <li><strong>固定残業代（みなし残業）</strong> — 従業員ごとに設定可能。設定された固定残業時間分は定額支給。
+                <ul style={{ paddingLeft: 16, marginTop: 2 }}>
+                  <li>実残業が固定時間以下 → 固定残業代のみ支給</li>
+                  <li>実残業が固定時間超過 → 固定残業代 + 超過分×1.25で追加支給</li>
+                  <li>深夜残業・休日労働は固定残業の対象外（別途計算）</li>
+                </ul>
+              </li>
             </ul>
             <p style={{ margin: "0 0 4px" }}>
               <strong>時間単価</strong>の計算式:（基本給 + 職務手当）÷ 月平均所定労働時間（{settings?.avgMonthlyHoursDefault || 173}h）
@@ -1261,6 +1291,8 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   const [newCommuteAllow, setNewCommuteAllow] = useState("0");
   const [newStdMonthly, setNewStdMonthly] = useState("260000");
   const [newResidentTax, setNewResidentTax] = useState("0");
+  const [newFixedOvertimeHours, setNewFixedOvertimeHours] = useState("0");
+  const [newFixedOvertimePay, setNewFixedOvertimePay] = useState("0");
   const [newHasKaigo, setNewHasKaigo] = useState(false);
   const [newHasEmployment, setNewHasEmployment] = useState(true);
   const [newHasPension, setNewHasPension] = useState(true);
@@ -1327,9 +1359,9 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   };
 
   const employmentTemplate = (type) => {
-    if (type === "役員") return { basicPay: 370000, dutyAllowance: 0, stdMonthly: 380000, residentTax: 16000, dependents: 0, hasKaigo: true, hasEmployment: false, hasPension: true, isOfficer: true };
-    if (type === "嘱託") return { basicPay: 100000, dutyAllowance: 0, stdMonthly: 104000, residentTax: 0, dependents: 0, hasKaigo: false, hasEmployment: false, hasPension: false, isOfficer: false };
-    return { basicPay: 210000, dutyAllowance: 10000, stdMonthly: 260000, residentTax: 13000, dependents: 0, hasKaigo: false, hasEmployment: true, hasPension: true, isOfficer: false };
+    if (type === "役員") return { basicPay: 370000, dutyAllowance: 0, stdMonthly: 380000, residentTax: 16000, dependents: 0, hasKaigo: true, hasEmployment: false, hasPension: true, isOfficer: true, fixedOvertimeHours: 0, fixedOvertimePay: 0 };
+    if (type === "嘱託") return { basicPay: 100000, dutyAllowance: 0, stdMonthly: 104000, residentTax: 0, dependents: 0, hasKaigo: false, hasEmployment: false, hasPension: false, isOfficer: false, fixedOvertimeHours: 0, fixedOvertimePay: 0 };
+    return { basicPay: 210000, dutyAllowance: 10000, stdMonthly: 260000, residentTax: 13000, dependents: 0, hasKaigo: false, hasEmployment: true, hasPension: true, isOfficer: false, fixedOvertimeHours: 0, fixedOvertimePay: 0 };
   };
 
   useEffect(() => {
@@ -1342,6 +1374,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     setNewStdMonthly(String(t.stdMonthly)); setNewResidentTax(String(t.residentTax));
     setNewDependents(String(t.dependents)); setNewHasKaigo(t.hasKaigo);
     setNewHasEmployment(t.hasEmployment); setNewHasPension(t.hasPension);
+    setNewFixedOvertimeHours(String(t.fixedOvertimeHours || 0)); setNewFixedOvertimePay(String(t.fixedOvertimePay || 0));
     setOnboardingErrors({});
   };
 
@@ -1412,6 +1445,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
       employmentType: newEmploymentType, dept: newDept || departments[0] || "運送事業", jobType: newJobType || jobTypes[0] || "トラックドライバー",
       basicPay: Number(newBasePay) || 0, dutyAllowance: Number(newDutyAllowance) || 0, commuteAllow: Number(newCommuteAllow) || 0, avgMonthlyHours: defaultAvgHours,
       stdMonthly: Number(newStdMonthly) || Number(newBasePay) || 0,
+      fixedOvertimeHours: Number(newFixedOvertimeHours) || 0, fixedOvertimePay: Number(newFixedOvertimePay) || 0,
       hasKaigo: newHasKaigo, hasPension: isOfficer ? true : newHasPension, hasEmployment: isOfficer ? false : newHasEmployment,
       dependents: Number(newDependents) || 0, residentTax: Number(newResidentTax) || 0, isOfficer, status: "在籍", leaveDate: "",
       note: `新規追加 (${new Date().toLocaleDateString("ja-JP")})`,
@@ -1419,7 +1453,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     setEmployees((prev) => [...prev, newEmployee]);
     setAttendance((prev) => ({ ...prev, [nextId]: { ...EMPTY_ATTENDANCE } }));
     setPaidLeaveBalance((prev) => [...prev, { empId: nextId, granted: 10, used: 0, carry: 0 }]);
-    setNewName(""); setNewHrmosEmployeeNumber(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0");
+    setNewName(""); setNewHrmosEmployeeNumber(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0"); setNewFixedOvertimeHours("0"); setNewFixedOvertimePay("0");
     setOnboardingMessage(`${newEmployee.name} を登録しました`);
     setShowForm(false);
     if (setChangeLogs) setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "入社", text: `${newEmployee.name} (${newEmployee.employmentType}) を登録` }, ...prev].slice(0, 30));
@@ -1492,6 +1526,11 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
               </select>
             </label>
             <label className="form-label">住民税（月額・円）<input value={newResidentTax} onChange={(e) => setNewResidentTax(e.target.value)} className={onboardingErrors.newResidentTax ? "error" : ""} /></label>
+          </div>
+          <div className="section-divider" style={{ marginTop: 8, marginBottom: 8 }}>固定残業（みなし残業）設定</div>
+          <div className="form-grid" style={{ marginBottom: 12 }}>
+            <label className="form-label">固定残業時間（h）<input type="number" min="0" step="1" value={newFixedOvertimeHours} onChange={(e) => setNewFixedOvertimeHours(e.target.value)} /><span style={{ fontSize: 10, color: "#94a3b8" }}>0 = 固定残業なし</span></label>
+            <label className="form-label">固定残業代（円）<input type="number" min="0" step="1000" value={newFixedOvertimePay} onChange={(e) => setNewFixedOvertimePay(e.target.value)} /><span style={{ fontSize: 10, color: "#94a3b8" }}>固定残業時間に対する定額</span></label>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
             <label className="checkbox-label"><input type="checkbox" checked={newHasKaigo} onChange={(e) => setNewHasKaigo(e.target.checked)} /> 介護保険</label>
@@ -1616,6 +1655,11 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
                               <label className="form-label">入社日<input type="date" value={editBuf.joinDate || ""} onChange={(e) => updateBuf("joinDate", e.target.value)} /></label>
                               <label className="form-label">退職日<input type="date" value={editBuf.leaveDate || ""} onChange={(e) => updateBuf("leaveDate", e.target.value)} /></label>
                             </div>
+                            <div className="section-divider" style={{ marginTop: 12, marginBottom: 8 }}>固定残業（みなし残業）</div>
+                            <div className="form-grid">
+                              <label className="form-label">固定残業時間（h）<input type="number" min="0" step="1" value={editBuf.fixedOvertimeHours || 0} onChange={(e) => updateBufNum("fixedOvertimeHours", e.target.value)} /><span style={{ fontSize: 10, color: "#94a3b8" }}>0 = 固定残業なし</span></label>
+                              <label className="form-label">固定残業代（円）<input type="number" min="0" step="1000" value={editBuf.fixedOvertimePay || 0} onChange={(e) => updateBufNum("fixedOvertimePay", e.target.value)} /><span style={{ fontSize: 10, color: "#94a3b8" }}>固定残業時間に対する定額</span></label>
+                            </div>
                             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
                               <label className="checkbox-label"><input type="checkbox" checked={editBuf.hasKaigo} onChange={(e) => updateBuf("hasKaigo", e.target.checked)} /> 介護保険</label>
                               <label className="checkbox-label"><input type="checkbox" checked={editBuf.hasPension} onChange={(e) => updateBuf("hasPension", e.target.checked)} /> 厚生年金</label>
@@ -1647,6 +1691,9 @@ const normalizeSnapshotRow = (row) => ({
   basicPay: row.basicPay || 0,
   dutyAllowance: row.dutyAllowance || 0,
   commuteAllow: row.commuteAllow || 0,
+  fixedOvertimePay: row.fixedOvertimePay || 0,
+  excessOvertimePay: row.excessOvertimePay || 0,
+  hasFixedOT: row.hasFixedOT || false,
   overtimePay: row.overtimePay ?? 0,
   prescribedOvertimePay: row.prescribedOvertimePay || 0,
   nightOvertimePay: row.nightOvertimePay ?? row.lateNightPay ?? 0,
@@ -1991,8 +2038,17 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
                 {(row.basicPayAdjust || 0) !== 0 && <div className="payslip-row sub"><span className="lbl">基本給調整</span><span className="amt">{money(row.basicPayAdjust)}</span></div>}
                 <div className="payslip-row"><span className="lbl">職務手当</span><span className="amt">{money(row.dutyAllowance)}</span></div>
                 <div className="payslip-row"><span className="lbl">通勤手当</span><span className="amt">{money(row.commuteAllow || 0)}</span></div>
-                <div className="payslip-row"><span className="lbl">時間外手当</span><span className="amt">{money(row.overtimePay)}</span></div>
-                {(row.prescribedOvertimePay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">所定外残業手当</span><span className="amt">{money(row.prescribedOvertimePay)}</span></div>}
+                {row.hasFixedOT ? (
+                  <>
+                    <div className="payslip-row"><span className="lbl">固定残業代</span><span className="amt">{money(row.fixedOvertimePay)}</span></div>
+                    {(row.excessOvertimePay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">超過残業手当</span><span className="amt">{money(row.excessOvertimePay)}</span></div>}
+                  </>
+                ) : (
+                  <>
+                    <div className="payslip-row"><span className="lbl">時間外手当</span><span className="amt">{money(row.overtimePay)}</span></div>
+                    {(row.prescribedOvertimePay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">所定外残業手当</span><span className="amt">{money(row.prescribedOvertimePay)}</span></div>}
+                  </>
+                )}
                 {(row.nightOvertimePay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">深夜残業手当</span><span className="amt">{money(row.nightOvertimePay)}</span></div>}
                 {(row.holidayPay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">休日労働手当</span><span className="amt">{money(row.holidayPay)}</span></div>}
                 {(row.otAdjust || 0) !== 0 && <div className="payslip-row sub"><span className="lbl">残業手当調整</span><span className="amt">{money(row.otAdjust)}</span></div>}
@@ -2047,7 +2103,7 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
       "出勤日数", "所定労働日数", "出勤時間", "所定労働時間",
       "法定外残業(h)", "所定外残業(h)", "深夜残業(h)", "休日労働(h)",
       "基本給", "基本給調整", "職務手当", "通勤手当",
-      "時間外手当", "法定内残業手当", "深夜残業手当", "休日手当",
+      "固定残業代", "超過残業手当", "時間外手当", "法定内残業手当", "深夜残業手当", "休日手当",
       "残業手当調整", "その他手当", "総支給額",
       "健康保険料", "介護保険料", "厚生年金", "雇用保険料",
       "社会保険料計", "所得税", "住民税", "年末調整", "控除合計",
@@ -2069,7 +2125,7 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
         row.workDays || 0, row.scheduledDays || 0, row.workHours || 0, row.scheduledHours || 0,
         row.legalOT || 0, row.prescribedOT || 0, row.nightOT || 0, row.holidayOT || 0,
         row.basicPay || 0, row.basicPayAdjust || 0, row.dutyAllowance || 0, row.commuteAllow || 0,
-        row.overtimePay || 0, row.prescribedOvertimePay || 0, row.nightOvertimePay || 0, row.holidayPay || 0,
+        row.fixedOvertimePay || 0, row.excessOvertimePay || 0, row.overtimePay || 0, row.prescribedOvertimePay || 0, row.nightOvertimePay || 0, row.holidayPay || 0,
         row.otAdjust || 0, row.otherAllowance || 0, row.gross || 0,
         row.health || 0, row.kaigo || 0, row.pension || 0, row.employment || 0,
         (row.health || 0) + (row.kaigo || 0) + (row.pension || 0) + (row.employment || 0),
@@ -2089,6 +2145,8 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
       detailRows.reduce((s, r) => s + (r.nightOT || 0), 0),
       detailRows.reduce((s, r) => s + (r.holidayOT || 0), 0),
       detailTotals.basicPay, 0, detailTotals.dutyAllowance, 0,
+      detailRows.reduce((s, r) => s + (r.fixedOvertimePay || 0), 0),
+      detailRows.reduce((s, r) => s + (r.excessOvertimePay || 0), 0),
       detailTotals.overtimePay, detailTotals.prescribedOvertimePay,
       detailTotals.nightOvertimePay, detailTotals.holidayPay,
       0, 0, detailTotals.gross,
@@ -2101,7 +2159,7 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
     totRow.eachCell((cell) => { cell.font = { bold: true }; cell.border = { top: { style: "double" } }; });
 
     // 列幅設定
-    const colWidths = [14,10,10,10, 8,10,8,10, 10,10,10,10, 12,10,10,10, 12,12,12,10, 12,10,14, 10,10,10,10, 12,10,10,10,12, 14];
+    const colWidths = [14,10,10,10, 8,10,8,10, 10,10,10,10, 12,10,10,10, 12,12,12,12,12,10, 12,10,14, 10,10,10,10, 12,10,10,10,12, 14];
     colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
     // 金額列に数値フォーマット（13列目=基本給 以降）
@@ -2142,7 +2200,7 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
     const groups = [
       { label: "従業員情報", cols: ["氏名", "部署", "区分", "職種"] },
       { label: "勤 怠", cols: ["出勤\n日数", "所定\n日数", "出勤\n時間", "所定\n時間", "法定外\n残業", "所定外\n残業", "深夜\n残業", "休日\n労働"] },
-      { label: "支 給", cols: ["基本給", "基本給\n調整", "職務手当", "通勤手当", "時間外\n手当", "法定内\n残業手当", "深夜\n残業手当", "休日手当", "残業\n調整", "その他\n手当", "総支給額"] },
+      { label: "支 給", cols: ["基本給", "基本給\n調整", "職務手当", "通勤手当", "固定\n残業代", "超過\n残業手当", "時間外\n手当", "法定内\n残業手当", "深夜\n残業手当", "休日手当", "残業\n調整", "その他\n手当", "総支給額"] },
       { label: "控 除", cols: ["健康\n保険", "介護\n保険", "厚生\n年金", "雇用\n保険", "社保計", "所得税", "住民税", "年末\n調整", "控除計"] },
       { label: "", cols: ["差引支給額"] },
     ];
@@ -2154,7 +2212,7 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
         fmtH(r.workDays), fmtH(r.scheduledDays), fmtH(r.workHours), fmtH(r.scheduledHours),
         fmtH(r.legalOT), fmtH(r.prescribedOT), fmtH(r.nightOT), fmtH(r.holidayOT),
         fmtCell(r.basicPay), fmtCell(r.basicPayAdjust), fmtCell(r.dutyAllowance), fmtCell(r.commuteAllow),
-        fmtCell(r.overtimePay), fmtCell(r.prescribedOvertimePay), fmtCell(r.nightOvertimePay), fmtCell(r.holidayPay),
+        fmtCell(r.fixedOvertimePay), fmtCell(r.excessOvertimePay), fmtCell(r.overtimePay), fmtCell(r.prescribedOvertimePay), fmtCell(r.nightOvertimePay), fmtCell(r.holidayPay),
         fmtCell(r.otAdjust), fmtCell(r.otherAllowance), fmtCell(r.gross),
         fmtCell(r.health), fmtCell(r.kaigo), fmtCell(r.pension), fmtCell(r.employment),
         fmtCell(si), fmtCell(r.incomeTax), fmtCell(r.residentTax), fmtCell(r.yearAdjustment), fmtCell(r.totalDeduct),
@@ -2172,6 +2230,8 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
       fmtH(detailRows.reduce((s,r)=>s+(r.nightOT||0),0)),
       fmtH(detailRows.reduce((s,r)=>s+(r.holidayOT||0),0)),
       fmtCell(detailTotals.basicPay), "", fmtCell(detailTotals.dutyAllowance), "",
+      fmtCell(detailRows.reduce((s, r) => s + (r.fixedOvertimePay || 0), 0)),
+      fmtCell(detailRows.reduce((s, r) => s + (r.excessOvertimePay || 0), 0)),
       fmtCell(detailTotals.overtimePay), fmtCell(detailTotals.prescribedOvertimePay),
       fmtCell(detailTotals.nightOvertimePay), fmtCell(detailTotals.holidayPay),
       "", "", fmtCell(detailTotals.gross),
@@ -2206,13 +2266,13 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
       let html = `<tr class="${i % 2 === 1 ? "stripe" : ""}">`;
       cells.forEach((v, ci) => {
         const rightAlign = ci >= 4 ? " class=\"r\"" : "";
-        const isBold = ci === 22 || ci === 31 || ci === 32; // 総支給額, 控除計, 差引支給額
-        const isNet = ci === 32;
-        const isDed = ci >= 23 && ci <= 31;
+        const isBold = ci === 24 || ci === 33 || ci === 34; // 総支給額, 控除計, 差引支給額
+        const isNet = ci === 34;
+        const isDed = ci >= 25 && ci <= 33;
         let style = "";
         if (isNet) style = " style=\"color:#1d4ed8;font-weight:700\"";
-        else if (ci === 22) style = " style=\"font-weight:700\"";
-        else if (ci === 31) style = " style=\"color:#dc2626;font-weight:700\"";
+        else if (ci === 24) style = " style=\"font-weight:700\"";
+        else if (ci === 33) style = " style=\"color:#dc2626;font-weight:700\"";
         else if (isBold) style = " style=\"font-weight:700\"";
         html += `<td${rightAlign}${style}>${v}</td>`;
       });
@@ -2364,7 +2424,7 @@ tr.totals td{border-top:2px solid #1e293b;font-size:9px}
                 </thead>
                 <tbody>
                   {detailRows.map((row) => {
-                    const otTotal = (row.overtimePay || 0) + (row.prescribedOvertimePay || 0) + (row.nightOvertimePay || 0) + (row.holidayPay || 0) + (row.otAdjust || 0);
+                    const otTotal = (row.fixedOvertimePay || 0) + (row.excessOvertimePay || 0) + (row.overtimePay || 0) + (row.prescribedOvertimePay || 0) + (row.nightOvertimePay || 0) + (row.holidayPay || 0) + (row.otAdjust || 0);
                     const otherPay = (row.dutyAllowance || 0) + (row.commuteAllow || 0) + (row.otherAllowance || 0) + (row.basicPayAdjust || 0);
                     const socialIns = (row.health || 0) + (row.kaigo || 0) + (row.pension || 0) + (row.employment || 0);
                     const taxTotal = (row.incomeTax || 0) + (row.residentTax || 0);
@@ -2400,7 +2460,7 @@ tr.totals td{border-top:2px solid #1e293b;font-size:9px}
                   <tr className="totals-row">
                     <td style={{ fontWeight: 700 }}>合計</td>
                     <td className="right mono">¥{fmt(detailTotals.basicPay)}</td>
-                    <td className="right mono">¥{fmt(detailTotals.overtimePay + detailTotals.prescribedOvertimePay + detailTotals.nightOvertimePay + detailTotals.holidayPay)}</td>
+                    <td className="right mono">¥{fmt(detailRows.reduce((s,r)=>s+(r.fixedOvertimePay||0)+(r.excessOvertimePay||0),0) + detailTotals.overtimePay + detailTotals.prescribedOvertimePay + detailTotals.nightOvertimePay + detailTotals.holidayPay)}</td>
                     <td className="right mono">¥{fmt(detailTotals.dutyAllowance)}</td>
                     <td className="right mono" style={{ fontWeight: 700, color: "#15803d" }}>¥{fmt(detailTotals.gross)}</td>
                     <td className="right mono deduction">¥{fmt(detailTotals.health + detailTotals.kaigo + detailTotals.pension + detailTotals.employment)}</td>
