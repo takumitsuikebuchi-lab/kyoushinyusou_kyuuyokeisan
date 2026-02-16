@@ -13,7 +13,9 @@
     "migrate:state:supabase": "node scripts/migrate-state-to-supabase.mjs"
   },
   "dependencies": {
-    "next": "14.2.26",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.95.3",
+    "next": "^14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "xlsx": "^0.18.5"

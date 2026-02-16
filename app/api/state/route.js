@@ -103,6 +103,10 @@ export async function GET() {
     }
 
     const state = await readStateFile();
+    if (!state && hasSupabaseConfig) {
+      // Supabase was configured but read failed above; file also empty
+      return NextResponse.json({ ok: true, source: "file", version: STATE_VERSION, updatedAt: null, data: null });
+    }
     return NextResponse.json({
       ok: true,
       source: "file",
@@ -137,15 +141,24 @@ export async function PUT(req) {
     if (hasSupabaseConfig) {
       try {
         await writeStateToSupabase(state);
-        // Keep a local backup file to simplify emergency recovery.
-        await writeStateFile(state);
+        // Keep a local backup file to simplify emergency recovery (may fail on read-only filesystems like Vercel).
+        try { await writeStateFile(state); } catch { /* ignore on cloud */ }
         return NextResponse.json({ ok: true, source: "supabase", updatedAt: state.updatedAt });
       } catch (error) {
         console.error("[state][PUT] supabase write error:", error);
       }
     }
 
-    await writeStateFile(state); // fallback
+    // Fallback to local file (only works on writable filesystem)
+    try {
+      await writeStateFile(state);
+    } catch (fsError) {
+      console.error("[state][PUT] file write error:", fsError);
+      return NextResponse.json(
+        { ok: false, message: "Supabase未設定のため、クラウド環境ではデータを保存できません。Supabaseの環境変数を設定してください。" },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ ok: true, source: "file", updatedAt: state.updatedAt });
   } catch {

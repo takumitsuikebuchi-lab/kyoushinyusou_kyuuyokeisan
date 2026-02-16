@@ -17,13 +17,29 @@ const inputFile = process.argv[2]
   ? path.resolve(process.argv[2])
   : path.join(process.cwd(), "data", "payroll-state.json");
 
-const raw = await fs.readFile(inputFile, "utf8");
-const state = JSON.parse(raw);
-
-if (!state || typeof state !== "object") {
-  console.error("[migrate-state-to-supabase] invalid input JSON");
+let raw;
+try {
+  raw = await fs.readFile(inputFile, "utf8");
+} catch (err) {
+  console.error(`[migrate-state-to-supabase] cannot read file: ${inputFile} (${err.code || err.message})`);
   process.exit(1);
 }
+
+let state;
+try {
+  state = JSON.parse(raw);
+} catch {
+  console.error("[migrate-state-to-supabase] input file is not valid JSON");
+  process.exit(1);
+}
+
+if (!state || typeof state !== "object") {
+  console.error("[migrate-state-to-supabase] invalid input JSON (not an object)");
+  process.exit(1);
+}
+
+console.log(`[migrate-state-to-supabase] reading from: ${inputFile}`);
+console.log(`[migrate-state-to-supabase] target: ${SUPABASE_URL}/rest/v1/${SUPABASE_STATE_TABLE}`);
 
 const payload = {
   id: SUPABASE_STATE_ROW_ID,

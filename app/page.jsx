@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase-client";
 
 // ===== 検証済み計算ロジック =====
 const ceil = (v) => Math.ceil(v);
@@ -739,7 +740,7 @@ const buildInsights = (employees, attendance, prevMonthHistory, settings) => {
 };
 
 // ===== Nav =====
-const Nav = ({ page, setPage }) => {
+const Nav = ({ page, setPage, userEmail }) => {
   const items = [
     { id: "dashboard", icon: <IconHome />, label: "ダッシュボード" },
     { id: "payroll", icon: <IconCalc />, label: "月次給与計算" },
@@ -748,6 +749,11 @@ const Nav = ({ page, setPage }) => {
     { id: "leave", icon: <IconCalendar />, label: "有給管理" },
     { id: "settings", icon: <IconSettings />, label: "マスタ設定" },
   ];
+  const handleLogout = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
   return (
     <nav className="nav">
       <div className="nav-brand">
@@ -762,7 +768,16 @@ const Nav = ({ page, setPage }) => {
           </button>
         ))}
       </div>
-      <div className="nav-footer">v3.1</div>
+      {userEmail && (
+        <div className="nav-user">
+          <div className="nav-user-email" title={userEmail}>{userEmail}</div>
+          <button onClick={handleLogout} className="nav-btn" style={{ fontSize: 12, opacity: 0.8 }}>
+            <span className="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
+            <span>ログアウト</span>
+          </button>
+        </div>
+      )}
+      <div className="nav-footer">v3.2</div>
     </nav>
   );
 };
@@ -1248,7 +1263,7 @@ const PayrollPage = ({
             </label>
             <label className="form-label">
               API Key (Secret Key)
-              <input value={hrmosSettings.apiKey} onChange={(e) => updateHrmos("apiKey", e.target.value)} placeholder="HRMOS管理画面から取得" />
+              <input type="password" value={hrmosSettings.apiKey} onChange={(e) => updateHrmos("apiKey", e.target.value)} placeholder="HRMOS管理画面から取得" autoComplete="off" />
             </label>
             <label className="form-label">
               Client ID
@@ -1597,7 +1612,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
       note: `新規追加 (${new Date().toLocaleDateString("ja-JP")})`,
     };
     setEmployees((prev) => [...prev, newEmployee]);
-    setAttendance((prev) => ({ ...prev, [nextId]: { workDays: 0, legalOT: 0, prescribedOT: 0, nightOT: 0, holidayOT: 0 } }));
+    setAttendance((prev) => ({ ...prev, [nextId]: { ...EMPTY_ATTENDANCE } }));
     setPaidLeaveBalance((prev) => [...prev, { empId: nextId, granted: 10, used: 0, carry: 0 }]);
     setNewName(""); setNewHrmosEmployeeNumber(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0");
     setOnboardingMessage(`${newEmployee.name} を登録しました`);
@@ -2302,7 +2317,7 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
     const exportDate = new Date().toLocaleDateString("ja-JP");
     const cn = companyName || "きょうしん輸送";
 
-    const fmt = (v) => (v == null || v === 0) ? "" : Number(v).toLocaleString("ja-JP");
+    const fmtCell = (v) => (v == null || v === 0) ? "" : Number(v).toLocaleString("ja-JP");
     const fmtH = (v) => (v == null || v === 0) ? "" : String(v);
 
     // カテゴリ別ヘッダー（2段組み: グループ行 + 項目行）
@@ -2320,12 +2335,12 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
         r.name, r.dept || "", r.employmentType || "", r.jobType || "",
         fmtH(r.workDays), fmtH(r.scheduledDays), fmtH(r.workHours), fmtH(r.scheduledHours),
         fmtH(r.legalOT), fmtH(r.prescribedOT), fmtH(r.nightOT), fmtH(r.holidayOT),
-        fmt(r.basicPay), fmt(r.basicPayAdjust), fmt(r.dutyAllowance), fmt(r.commuteAllow),
-        fmt(r.overtimePay), fmt(r.prescribedOvertimePay), fmt(r.nightOvertimePay), fmt(r.holidayPay),
-        fmt(r.otAdjust), fmt(r.otherAllowance), fmt(r.gross),
-        fmt(r.health), fmt(r.kaigo), fmt(r.pension), fmt(r.employment),
-        fmt(si), fmt(r.incomeTax), fmt(r.residentTax), fmt(r.yearAdjustment), fmt(r.totalDeduct),
-        fmt(r.net),
+        fmtCell(r.basicPay), fmtCell(r.basicPayAdjust), fmtCell(r.dutyAllowance), fmtCell(r.commuteAllow),
+        fmtCell(r.overtimePay), fmtCell(r.prescribedOvertimePay), fmtCell(r.nightOvertimePay), fmtCell(r.holidayPay),
+        fmtCell(r.otAdjust), fmtCell(r.otherAllowance), fmtCell(r.gross),
+        fmtCell(r.health), fmtCell(r.kaigo), fmtCell(r.pension), fmtCell(r.employment),
+        fmtCell(si), fmtCell(r.incomeTax), fmtCell(r.residentTax), fmtCell(r.yearAdjustment), fmtCell(r.totalDeduct),
+        fmtCell(r.net),
       ];
     };
 
@@ -2338,13 +2353,13 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
       fmtH(detailRows.reduce((s,r)=>s+(r.prescribedOT||0),0)),
       fmtH(detailRows.reduce((s,r)=>s+(r.nightOT||0),0)),
       fmtH(detailRows.reduce((s,r)=>s+(r.holidayOT||0),0)),
-      fmt(detailTotals.basicPay), "", fmt(detailTotals.dutyAllowance), "",
-      fmt(detailTotals.overtimePay), fmt(detailTotals.prescribedOvertimePay),
-      fmt(detailTotals.nightOvertimePay), fmt(detailTotals.holidayPay),
-      "", "", fmt(detailTotals.gross),
-      fmt(detailTotals.health), fmt(detailTotals.kaigo), fmt(detailTotals.pension), fmt(detailTotals.employment),
-      fmt(siTotal), fmt(detailTotals.incomeTax), fmt(detailTotals.residentTax), fmt(detailTotals.yearAdjustment), fmt(detailTotals.totalDeduct),
-      fmt(detailTotals.net),
+      fmtCell(detailTotals.basicPay), "", fmtCell(detailTotals.dutyAllowance), "",
+      fmtCell(detailTotals.overtimePay), fmtCell(detailTotals.prescribedOvertimePay),
+      fmtCell(detailTotals.nightOvertimePay), fmtCell(detailTotals.holidayPay),
+      "", "", fmtCell(detailTotals.gross),
+      fmtCell(detailTotals.health), fmtCell(detailTotals.kaigo), fmtCell(detailTotals.pension), fmtCell(detailTotals.employment),
+      fmtCell(siTotal), fmtCell(detailTotals.incomeTax), fmtCell(detailTotals.residentTax), fmtCell(detailTotals.yearAdjustment), fmtCell(detailTotals.totalDeduct),
+      fmtCell(detailTotals.net),
     ];
 
     // グループヘッダー行 HTML
@@ -2959,6 +2974,16 @@ export default function App() {
   const [changeLogs, setChangeLogs] = useState([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
   const [saveStatus, setSaveStatus] = useState("読込中");
+  const [userEmail, setUserEmail] = useState("");
+
+  // Fetch logged-in user email
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) setUserEmail(user.email);
+    });
+  }, []);
 
   const sortedMonthlyHistory = useMemo(() => [...monthlyHistory].sort((a, b) => a.month.localeCompare(b.month)), [monthlyHistory]);
   const oldestUnconfirmed = sortedMonthlyHistory.find((m) => m.status !== "確定");
@@ -3049,7 +3074,7 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Auto-save
+  // Auto-save (debounced 800ms to reduce rapid-fire writes)
   useEffect(() => {
     if (!isStateHydrated) return;
     const timer = setTimeout(async () => {
@@ -3073,12 +3098,13 @@ export default function App() {
             calcStatus,
             isAttendanceDirty,
             changeLogs,
+            _savedAt: new Date().toISOString(),
           }),
         });
         if (!res.ok) throw new Error("failed");
         setSaveStatus("保存済み");
       } catch { setSaveStatus("保存失敗"); }
-    }, 500);
+    }, 800);
     return () => clearTimeout(timer);
   }, [isStateHydrated, page, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
 
@@ -3291,7 +3317,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <Nav page={page} setPage={setPage} />
+      <Nav page={page} setPage={setPage} userEmail={userEmail} />
       <main className="app-main">
         {/* Compact Status Bar */}
         <div className="status-bar">

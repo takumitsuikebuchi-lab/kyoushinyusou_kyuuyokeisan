@@ -1,9 +1,9 @@
 # AI間引き継ぎドキュメント（Handoff）
 
-> **最終更新**: 2026-02-13
+> **最終更新**: 2026-02-16
 > **最終更新者**: Claude Code
-> **最終コミット**: `fix+feat: UI/UX改善・不具合修正（ID安全化・削除確認・DetailPanel休日OT・CSS修正・UXリライト）`
-> **ステータス**: UI/UX全面改善と不具合修正完了。残課題は伊達良幸の正式データ設定。
+> **最終コミット**: `feat: Supabase Auth認証・ログインUI・ミドルウェア追加（クラウドマルチユーザー対応）`
+> **ステータス**: 認証機能追加完了。Vercelデプロイ + Supabase設定でクラウドマルチユーザー運用可能。
 
 ---
 
@@ -55,10 +55,10 @@
 ## 0. クイックステータス（最短把握）
 
 - 現在ブランチ: `main`
-- 最新コミット: `fix+feat: UI/UX改善・不具合修正`
-- 次に着手する課題: 伊達良幸の正式データ設定（ユーザーから基本給・標準報酬・保険フラグ共有待ち）
-- プレビューURL: `http://127.0.0.1:3000`
-- 検証結果: `npm run build` 成功。UI/UXリライトと不具合修正7件を実施・ビルド確認済み。
+- 最新コミット: `feat: Supabase Auth認証・ログインUI・ミドルウェア追加（クラウドマルチユーザー対応）`
+- 次に着手する課題: Vercelデプロイ（GitHub連携→環境変数設定→初回デプロイ）/ Supabase Auth ユーザー作成
+- プレビューURL: `http://127.0.0.1:3000`（ローカル） → Vercelデプロイ後 `https://xxxxx.vercel.app`
+- 検証結果: `npm run build` 成功（Next.js 14.2.35）。Middleware 74.4 kB。認証・ログイン・ログアウト・API保護実装済み。
 
 ### AI間共通プロトコル（Codex / Cloud Code）
 
@@ -109,6 +109,18 @@
 | 通常月CSV突合（2025-11/12支給） | 全3名（渡会流雅・渡曾羊一・門馬将太）× 2ヶ月 × 全項目（総支給・社保・所得税・住民税・差引支給）がMFと完全一致。R7税額表使用で検証 |
 | 入退社ワークフロー追加 | 従業員一覧に「設定未完了一覧」「テンプレ即適用」「退社処理/在籍復帰」「退職日編集」を追加し、入退社運用の手戻りを削減 |
 | UI/UX全面改善+不具合修正 | (1)新規登録IDの文字列ID安全対処 (2)従業員削除に確認ダイアログ (3)DetailPanelに休日OT表示追加 (4)`btn-outline`CSS追加 (5)設定ページ保存ボタンを自動保存バッジに修正 (6)insights控除額チェックロジック修正 (7)normalizeSnapshotRow冗長修正。UIは入退社ワークフローカード・従業員ステータスピル・有給色分け・空ステート・ダッシュボードリマインダー表示・給与計算ヘッダー・履歴ページアクション統合などを改善 |
+| HRMOS A操作の堅牢化 | ID一致→プレビュー→適用→未紐付けキュー→自動計算のフローをf99ebedで実装。Supabaseバックエンド追加 |
+| Supabase永続化サポート | `app/api/state/route.js` がSupabase優先・ローカルフォールバック。`supabase/app_state.sql`、`scripts/migrate-state-to-supabase.mjs` 追加 |
+| launchd サービス管理 | `scripts/service-launchd.sh`（install/start/stop/restart/logs）、`scripts/deploy-local.sh`、`scripts/prepare-runtime.sh` |
+| Next.js 14.2.35 アップデート | 14.2.26→14.2.35。CVE-2025-30218等のセキュリティ修正を適用。残りの脆弱性は16.x必要で保留 |
+| lib/ Phase 1 リファクタ | 純粋ロジック（給与計算・税額表・等級表・日付ユーティリティ・HRMOS マッチング・CSVパーサー）を `lib/` に切り出し |
+| コード品質改善 | preview-20260211のmetadata/useClient矛盾修正、API Key入力のpassword化、addDriverの勤怠初期化漏れ修正、PDF出力のfmt関数シャドウイング修正、auto-saveのデバウンス最適化(500→800ms) |
+| Supabase Auth 認証機能 | `middleware.js` で全ルートを保護。未認証→`/login` リダイレクト、API→401。`@supabase/ssr` + `@supabase/supabase-js` 使用 |
+| ログインUI | `app/login/page.jsx` にメール/パスワードログイン画面。きょうしん輸送ブランドデザイン。招待制（セルフサインアップなし想定） |
+| ログアウト機能 | Nav にユーザーメール表示 + ログアウトボタン追加。`getSupabaseBrowserClient()` 経由で `signOut()` |
+| API認証保護 | middleware で `/api/state`、`/api/hrmos/sync` 等を保護。未認証API呼び出しは 401 JSON |
+| クラウドデプロイ対応 | `/api/state` のファイル書込を read-only FS 対応に改善。Supabase未設定時はエラーメッセージ明確化 |
+| jsconfig.json パスエイリアス | `@/*` → `./*` のパスマッピング追加。`lib/` インポートを `@/lib/` 形式で統一 |
 
 ### 検証結果（渡会流雅 2026年1月）
 
@@ -141,7 +153,16 @@
 
 | 優先度 | 項目 | 詳細 |
 |--------|------|------|
+| **高** | Vercelデプロイ | GitHub連携→Vercelプロジェクト作成→環境変数設定（SUPABASE_URL, SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY）→デプロイ |
+| **高** | Supabase本番セットアップ | プロジェクト作成→`supabase/setup.sql`実行→Auth設定（セルフサインアップOFF推奨）→ユーザー作成 |
+| **高** | 既存データのSupabase移行 | `npm run migrate:state:supabase -- data/payroll-state.json` で既存JSONをSupabaseに移行 |
 | **中** | 伊達良幸の正式データ設定 | 仮登録済み（ID: `hrmos_22`）。ユーザーから正式値共有後に基本給・標準報酬・保険を更新する |
+| **中** | Phase 2 リファクタ | `components/` にページコンポーネント（Dashboard, Payroll, Employees, History, Leave, Settings）を分離 |
+| **中** | page.jsx の lib/ からのimport切替 | 現在page.jsx内にロジックのコピーが残存。`lib/` からのimportに段階的に切替 |
+| **中** | xlsx脆弱性対応 | `xlsx` (SheetJS) に高深刻度の脆弱性あり。`exceljs` への置き換えを検討 |
+| **低** | Phase 3 State管理改善 | App本体のuseState群を useReducer/Zustand 等で整理 |
+| **低** | Next.js 16.x 移行検討 | 残存の高脆弱性（GHSA-9g9p, GHSA-h25m）は16.x必要。破壊的変更あり |
+| **低** | カスタムドメイン設定 | Vercelデプロイ後、独自ドメイン（例: payroll.kyoshin-yusou.co.jp）をDNS設定で紐付け |
 
 ### ユーザー提供済みデータ（通常月検証用）
 
@@ -155,13 +176,36 @@
 
 ```
 app/
-  page.jsx                          ← メイン（計算ロジック・UI全て）
+  page.jsx                          ← メイン（UI・状態管理・計算ロジック inline）
+  layout.jsx                        ← RootLayout（metadata・フォント）
+  login/page.jsx                    ← ログイン画面（Supabase Auth）
+  login/layout.jsx                  ← ログインレイアウト
+  preview-20260211/page.jsx         ← プレビュー用ルート
   api/
+    auth/callback/route.js          ← OAuth/マジックリンクコールバック
     hrmos/sync/route.js             ← HRMOS API連携（認証・取得・変換）
-    payroll/run-monthly/route.js    ← 旧自動計算API（現在は未使用）
-    payroll/save/route.js           ← 状態保存
+    payroll/run-monthly/route.js    ← 旧自動計算API（410 Gone スタブ）
+    state/route.js                  ← 状態保存（Supabase優先・ファイルフォールバック）
+middleware.js                       ← 認証ミドルウェア（全ルート保護）
+lib/
+  index.js                          ← バレルエクスポート
+  payroll-calc.js                   ← 給与計算エンジン・税額表・等級表
+  date-utils.js                     ← 日付ユーティリティ・汎用ヘルパー
+  hrmos-matching.js                 ← HRMOSマッチングロジック
+  csv-parser.js                     ← CSVパーサー
+  supabase-client.js                ← ブラウザ用Supabaseクライアント（シングルトン）
+  supabase-server.js                ← サーバー用Supabaseクライアント（Cookie管理）
+scripts/
+  deploy-local.sh                   ← ローカルデプロイ
+  prepare-runtime.sh                ← ランタイム準備
+  service-launchd.sh                ← launchd サービス管理
+  run-prod.sh                       ← 本番起動
+  migrate-state-to-supabase.mjs     ← JSON→Supabase移行
+supabase/
+  app_state.sql                     ← Supabaseテーブル定義
+  setup.sql                         ← Auth + テーブル セットアップガイド
 data/
-  payroll-state.json                ← 全データ永続化
+  payroll-state.json                ← 全データ永続化（ローカルバックアップ）
 ```
 
 ### 計算フロー
@@ -295,6 +339,15 @@ curl -s -X POST http://localhost:3000/api/hrmos/sync \
 19. **MFのCSV「健康保険料」欄は介護保険込みの場合がある** — 門馬将太のように介護保険ありの従業員では、CSV「健康保険料」列に健保+介護の合算値が入り「介護保険料」列は空になる。突合時は合算で比較すること。
 20. **退社処理ボタンは雇用保険を自動OFFにする** — 従業員一覧の「退社処理」は `status=退職` と `leaveDate` 設定に加え `hasEmployment=false` に変更する。退職後の雇保控除を防ぐため。
 21. **新規登録のID採番は数値IDのみを参照する** — `hrmos_22` のような文字列IDが混在するため、`Math.max()` の対象を `typeof e.id === "number"` でフィルタすること。修正済み（v3.1）。
+22. **preview-20260211/page.jsx でmetadataを定義しない** — `use client` コンポーネントをimportするページで`export const metadata` を使うとエラー。修正済み。
+23. **exportAllPayslipsPdfの中でfmt関数を再宣言しない** — module スコープの `fmt` と衝突してPDF出力で数値フォーマットが壊れる可能性がある。`fmtCell` に改名済み。
+24. **addDriverの勤怠初期化はEMPTY_ATTENDANCEを使う** — `{workDays:0, legalOT:0, ...}` のように一部フィールドだけ指定すると `scheduledDays`, `workHours` 等が undefined になりNaN表示の原因。修正済み。
+25. **Supabase環境変数はlaunchd plistに含まれない** — `.env` ファイルをプロジェクトルートに置けばNext.jsが自動読み込み。`prepare-runtime.sh` が `.env` をrsync対象に含むことを確認済み。
+26. **lib/ の関数は page.jsx 内にもコピーが残っている** — Phase 1では `lib/` に分離コピーを作成。page.jsxからの import 切替は Phase 2 以降で段階的に実施予定。切替時にテスト回帰に注意。
+27. **Supabase環境変数は2種類必要** — server-side用（`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`）と client-side用（`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`）。`NEXT_PUBLIC_` 接頭辞がないとブラウザで参照不可。
+28. **認証なしのローカル開発も可能** — `NEXT_PUBLIC_SUPABASE_URL` が未設定なら middleware は認証チェックをスキップする。ローカルで `.env` を設定しなければ従来通り認証なしで動作。
+29. **Vercelはファイルシステムが読み取り専用** — `/api/state` の PUT はSupabase書込成功後のローカルバックアップ書込が失敗しても無視する。Supabase未設定のまま Vercel にデプロイするとデータ保存できない。
+30. **セルフサインアップは無効にすること** — Supabase Dashboard > Authentication > Providers > Email > "Enable Sign Up" をOFFにしないと誰でもアカウント作成可能になる。招待制運用を想定。
 
 ---
 
@@ -302,6 +355,15 @@ curl -s -X POST http://localhost:3000/api/hrmos/sync \
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-02-16 | Supabase Auth 認証機能追加: `middleware.js`（全ルート保護）、`app/login/page.jsx`（ログインUI）、`lib/supabase-client.js`/`supabase-server.js`（Supabaseクライアント）、`app/api/auth/callback/route.js`（OAuthコールバック） |
+| 2026-02-16 | クラウドデプロイ対応: Nav にログアウトボタン追加、`/api/state` のread-only FS対応、`jsconfig.json` に `@/` パスエイリアス追加、`.env.example` にクライアント側変数追加 |
+| 2026-02-16 | `@supabase/supabase-js` + `@supabase/ssr` パッケージ追加。バージョン v3.1→v3.2 |
+| 2026-02-16 | Next.js 14.2.26→14.2.35 セキュリティアップデート（CVE-2025-30218他、14.x系最新） |
+| 2026-02-16 | Phase 1 リファクタ: 純粋ロジックを `lib/` に切り出し（payroll-calc.js, date-utils.js, hrmos-matching.js, csv-parser.js） |
+| 2026-02-16 | バグ修正: preview-20260211の metadata/useClient矛盾、addDriver勤怠初期化不完全、PDF出力のfmt関数シャドウイング |
+| 2026-02-16 | セキュリティ改善: HRMOS API Key入力をpassword typeに変更 |
+| 2026-02-16 | 品質改善: auto-saveデバウンス500ms→800ms、migrate-state-to-supabase.mjsのエラーハンドリング強化 |
+| 2026-02-16 | HANDOFF.md を全面更新: Supabase/launchd/lib構成/残課題を追記。アーキテクチャ図を最新化 |
 | 2026-02-13 | UI/UX全面改善: ワークフローカード刷新、ステータスピル追加、有給色分け、空ステート改善、DetailPanel休日OT追加、不具合7件修正（ID安全化・削除確認・CSS・insights・設定保存・snapshot正規化） |
 | 2026-02-13 | 従業員一覧に入退社ワークフローを追加（設定未完了一覧、テンプレ即適用、退社処理/在籍復帰、退職日編集） |
 | 2026-02-13 | 通常月CSV突合完了: 2025-11/12支給（10/11月勤務分）全3名×全項目MF完全一致。R7税額表（国税庁Excel）で所得税も検証 |
