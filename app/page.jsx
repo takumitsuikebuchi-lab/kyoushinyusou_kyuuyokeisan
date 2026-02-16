@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 // ===== 検証済み計算ロジック =====
 const ceil = (v) => Math.ceil(v);
@@ -37,7 +37,10 @@ const calcPayroll = (emp, att, settings) => {
   const otPrescribed = calcOvertime(hourly, att.prescribedOT, 1.0);
   const otNight = calcOvertime(hourly, att.nightOT, 1.25);
   const otHoliday = calcOvertime(hourly, att.holidayOT, 1.35);
-  const gross = emp.basicPay + emp.dutyAllowance + otLegal + otPrescribed + otNight + otHoliday + emp.commuteAllow;
+  const otAdjust = Number(att.otAdjust) || 0;
+  const basicPayAdj = Number(att.basicPayAdjust) || 0;
+  const otherAllowance = Number(att.otherAllowance) || 0;
+  const gross = (emp.basicPay + basicPayAdj) + emp.dutyAllowance + otLegal + otPrescribed + otNight + otHoliday + otAdjust + otherAllowance + emp.commuteAllow;
   const health = emp.stdMonthly ? insRound(emp.stdMonthly * rates.health) : 0;
   const kaigo = emp.hasKaigo && emp.stdMonthly ? insRound(emp.stdMonthly * rates.kaigo) : 0;
   const pension = emp.hasPension && emp.stdMonthly ? insRound(emp.stdMonthly * rates.pension) : 0;
@@ -56,7 +59,7 @@ const calcPayroll = (emp, att, settings) => {
   const erEmployment = emp.hasEmployment ? insRound(gross * rates.employment) : 0;
   const erTotal = erHealth + erKaigo + erPension + erChildCare + erEmployment;
   const companyCost = gross + erTotal;
-  return { hourly: Math.round(hourly * 100) / 100, otLegal, otPrescribed, otNight, otHoliday, gross, health, kaigo, pension, employment, socialTotal, incomeTax, residentTax, totalDeduct, netPay, erHealth, erKaigo, erPension, erChildCare, erEmployment, erTotal, companyCost };
+  return { hourly: Math.round(hourly * 100) / 100, otLegal, otPrescribed, otNight, otHoliday, otAdjust, basicPayAdj, otherAllowance, gross, health, kaigo, pension, employment, socialTotal, incomeTax, residentTax, totalDeduct, netPay, erHealth, erKaigo, erPension, erChildCare, erEmployment, erTotal, companyCost };
 };
 
 // ===== 令和8年分 月額税額表（甲欄・扶養0人） =====
@@ -213,9 +216,9 @@ const INITIAL_EMPLOYEES = [
 ];
 
 const INITIAL_ATTENDANCE = {
-  1: { workDays: 25, legalOT: 58.0, prescribedOT: 19.5, nightOT: 1.5, holidayOT: 0 },
-  2: { workDays: 12, legalOT: 7.5, prescribedOT: 4.0, nightOT: 0, holidayOT: 0 },
-  3: { workDays: 25, legalOT: 0, prescribedOT: 0, nightOT: 0, holidayOT: 0 },
+  1: { workDays: 25, scheduledDays: 0, workHours: 0, scheduledHours: 0, legalOT: 58.0, prescribedOT: 19.5, nightOT: 1.5, holidayOT: 0, otAdjust: 0, basicPayAdjust: 0, otherAllowance: 0 },
+  2: { workDays: 12, scheduledDays: 0, workHours: 0, scheduledHours: 0, legalOT: 7.5, prescribedOT: 4.0, nightOT: 0, holidayOT: 0, otAdjust: 0, basicPayAdjust: 0, otherAllowance: 0 },
+  3: { workDays: 25, scheduledDays: 0, workHours: 0, scheduledHours: 0, legalOT: 0, prescribedOT: 0, nightOT: 0, holidayOT: 0, otAdjust: 0, basicPayAdjust: 0, otherAllowance: 0 },
 };
 
 const INITIAL_MONTHLY_HISTORY = [
@@ -334,7 +337,11 @@ const NEXT_PAY_DATE_OBJ = isNextMonthPay(INITIAL_MASTER_SETTINGS.paymentDay)
   ? new Date(REF_TODAY.getFullYear(), REF_TODAY.getMonth() + 1, _INIT_PAY_DAY)
   : new Date(REF_TODAY.getFullYear(), REF_TODAY.getMonth(), _INIT_PAY_DAY);
 const CURRENT_PAY_DATE = toIsoDate(NEXT_PAY_DATE_OBJ);
-const EMPTY_ATTENDANCE = { legalOT: 0, prescribedOT: 0, nightOT: 0, holidayOT: 0 };
+const EMPTY_ATTENDANCE = {
+  workDays: 0, scheduledDays: 0, workHours: 0, scheduledHours: 0,
+  legalOT: 0, prescribedOT: 0, nightOT: 0, holidayOT: 0,
+  otAdjust: 0, basicPayAdjust: 0, otherAllowance: 0,
+};
 
 const processingMonthOf = (date) => {
   const d = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -446,11 +453,18 @@ const detectDelimiter = (text) => {
 const normalizeHeader = (v) => String(v || "").replace(/\s/g, "").replace(/[()（）]/g, "").toLowerCase();
 const findIndexBy = (headersNorm, predicate) => headersNorm.findIndex(predicate);
 
-const toSnapshotRowFromCalc = (emp, result) => ({
-  empId: emp.id, name: emp.name, jobType: emp.jobType,
+const toSnapshotRowFromCalc = (emp, result, att) => ({
+  empId: emp.id, name: emp.name, jobType: emp.jobType, dept: emp.dept || "",
+  employmentType: emp.employmentType || (emp.isOfficer ? "役員" : "正社員"),
   basicPay: emp.basicPay || 0, dutyAllowance: emp.dutyAllowance || 0,
+  commuteAllow: emp.commuteAllow || 0,
   overtimePay: result.otLegal || 0, prescribedOvertimePay: result.otPrescribed || 0,
   nightOvertimePay: result.otNight || 0, holidayPay: result.otHoliday || 0,
+  otAdjust: result.otAdjust || 0, basicPayAdjust: result.basicPayAdj || 0,
+  otherAllowance: result.otherAllowance || 0,
+  workDays: att?.workDays || 0, scheduledDays: att?.scheduledDays || 0,
+  workHours: att?.workHours || 0, scheduledHours: att?.scheduledHours || 0,
+  legalOT: att?.legalOT || 0, prescribedOT: att?.prescribedOT || 0, nightOT: att?.nightOT || 0, holidayOT: att?.holidayOT || 0,
   gross: result.gross || 0, health: result.health || 0, kaigo: result.kaigo || 0,
   pension: result.pension || 0, employment: result.employment || 0,
   incomeTax: result.incomeTax || 0, residentTax: result.residentTax || 0,
@@ -513,21 +527,6 @@ const buildMonthlyChecks = (employees, attendance, monthStatus) => {
   if (monthStatus === "未計算") warning.push("当月が未計算です。勤怠取込後に計算してください。");
   if (monthStatus === "計算中") warning.push("当月は計算中です。確定前に合計金額を再確認してください。");
   return { critical, warning };
-};
-
-const escapeHtml = (value) =>
-  String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
-const exportSlipAsPdf = ({ companyName, month, payDate, row }) => {
-  if (typeof window === "undefined") return;
-  const win = window.open("", "_blank", "noopener,noreferrer,width=900,height=1000");
-  if (!win) return;
-  const monthText = monthFullLabel(month);
-  const payDateText = formatDateJP(payDate);
-  const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8" /><title>${escapeHtml(row.name)}_${escapeHtml(monthText)}_給与明細</title><style>body{font-family:sans-serif;margin:28px;color:#111827}h1{margin:0 0 8px;font-size:20px}.meta{font-size:12px;color:#475569;margin-bottom:16px}table{width:100%;border-collapse:collapse;margin-bottom:14px}th,td{border:1px solid #d1d5db;padding:8px;font-size:12px;text-align:left}th{background:#f8fafc}.right{text-align:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.total{font-weight:700;background:#eff6ff}.footer{margin-top:8px;font-size:11px;color:#64748b}</style></head><body><h1>給与明細</h1><div class="meta">会社: ${escapeHtml(companyName)}<br/>対象月: ${escapeHtml(monthText)} / 支給日: ${escapeHtml(payDateText)}<br/>氏名: ${escapeHtml(row.name)} / 職種: ${escapeHtml(row.jobType || "-")}</div><table><thead><tr><th colspan="2">支給</th></tr></thead><tbody><tr><td>基本給</td><td class="right">${money(row.basicPay)}</td></tr><tr><td>職務手当</td><td class="right">${money(row.dutyAllowance)}</td></tr><tr><td>残業手当</td><td class="right">${money(row.overtimePay)}</td></tr><tr><td>法定内残業手当</td><td class="right">${money(row.prescribedOvertimePay)}</td></tr><tr><td>深夜残業手当</td><td class="right">${money(row.nightOvertimePay)}</td></tr><tr><td>休日手当</td><td class="right">${money(row.holidayPay)}</td></tr><tr class="total"><td>総支給</td><td class="right">${money(row.gross)}</td></tr></tbody></table><table><thead><tr><th colspan="2">控除</th></tr></thead><tbody><tr><td>健康保険</td><td class="right">${money(row.health)}</td></tr><tr><td>介護保険</td><td class="right">${money(row.kaigo)}</td></tr><tr><td>厚生年金</td><td class="right">${money(row.pension)}</td></tr><tr><td>雇用保険</td><td class="right">${money(row.employment)}</td></tr><tr><td>所得税</td><td class="right">${money(row.incomeTax)}</td></tr><tr><td>住民税</td><td class="right">${money(row.residentTax)}</td></tr><tr><td>年調過不足</td><td class="right">${money(row.yearAdjustment)}</td></tr><tr class="total"><td>控除合計</td><td class="right">${money(row.totalDeduct)}</td></tr><tr class="total"><td>差引支給</td><td class="right">${money(row.net)}</td></tr></tbody></table><div class="footer">印刷ダイアログで「PDFに保存」を選択してください。</div><script>setTimeout(()=>{window.print()},200);</script></body></html>`;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
 };
 
 // ===== SVG Icons =====
@@ -862,16 +861,21 @@ const PayrollPage = ({
           </div>
           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{payrollCycleLabel(payrollMonth, payrollPayDate)}</div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {(hasCriticalChecks || monthlyChecks.warning.length > 0) && (
+            <span style={{ fontSize: 11, color: hasCriticalChecks ? "var(--danger)" : "var(--warning)" }}>
+              ⚠ 確認事項があります（重大{monthlyChecks.critical.length} / 注意{monthlyChecks.warning.length}）
+            </span>
+          )}
           {payrollStatus === "確定" && !isAttendanceDirty && (
             <button className="btn btn-secondary btn-sm" onClick={onUndoConfirm}>確定を取り消す</button>
           )}
           <button
-            className={`btn ${hasCriticalChecks ? "btn-secondary" : isAttendanceDirty ? "btn-warning" : "btn-primary"}`}
-            onClick={() => { if (!hasCriticalChecks) onConfirmPayroll(results); }}
-            disabled={hasCriticalChecks || (payrollStatus === "確定" && !isAttendanceDirty)}
+            className={`btn ${isAttendanceDirty ? "btn-warning" : "btn-primary"}`}
+            onClick={() => onConfirmPayroll(results)}
+            disabled={payrollStatus === "確定" && !isAttendanceDirty}
           >
-            {hasCriticalChecks ? "⚠ 確認項目あり" : isAttendanceDirty ? "再計算して確定" : payrollStatus === "確定" ? "✓ 確定済み" : "確定する"}
+            {isAttendanceDirty ? "再計算して確定" : payrollStatus === "確定" ? "✓ 確定済み" : "確定する"}
           </button>
         </div>
       </div>
@@ -952,21 +956,122 @@ const PayrollPage = ({
         const selectedRow = results.find((x) => x.emp.id === selected);
         if (!selectedRow) return null;
         const { emp, att, result: r } = selectedRow;
+        const otCalcTotal = r.otLegal + r.otPrescribed + r.otNight + r.otHoliday;
         return (
           <div className="detail-panel">
+            {/* 勤怠詳細 + 月次調整 */}
+            <Card title={`${emp.name} 勤怠・調整`}>
+              <div className="section-divider">勤怠情報</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 13 }}>
+                <div className="detail-row">
+                  <span className="label">出勤日数</span>
+                  <span className="value">
+                    <input type="number" step="1" className="inline-input" style={{ width: 60 }}
+                      value={att.workDays} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "workDays", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>日</span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">所定労働日数</span>
+                  <span className="value">
+                    <input type="number" step="1" className="inline-input" style={{ width: 60 }}
+                      value={att.scheduledDays} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "scheduledDays", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>日</span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">出勤時間</span>
+                  <span className="value">
+                    <input type="number" step="0.5" className="inline-input" style={{ width: 60 }}
+                      value={att.workHours} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "workHours", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>h</span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">所定労働時間</span>
+                  <span className="value">
+                    <input type="number" step="0.5" className="inline-input" style={{ width: 60 }}
+                      value={att.scheduledHours} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "scheduledHours", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>h</span>
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 13, marginTop: 8 }}>
+                <div className="detail-row">
+                  <span className="label">法定外残業</span>
+                  <span className="value mono">{att.legalOT}h</span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">所定外残業</span>
+                  <span className="value mono">{att.prescribedOT}h</span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">深夜残業</span>
+                  <span className="value mono">{att.nightOT}h</span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">休日労働</span>
+                  <span className="value mono">{att.holidayOT}h</span>
+                </div>
+              </div>
+
+              <div className="section-divider" style={{ marginTop: 16 }}>月次調整（この月のみ）</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, fontSize: 13 }}>
+                <div className="detail-row">
+                  <span className="label">基本給調整</span>
+                  <span className="value">
+                    <input type="number" step="1000" className="inline-input" style={{ width: 100 }}
+                      value={att.basicPayAdjust || 0} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "basicPayAdjust", e.target.value)} />
+                    <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 4 }}>円</span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">残業手当調整</span>
+                  <span className="value">
+                    <input type="number" step="1000" className="inline-input" style={{ width: 100 }}
+                      value={att.otAdjust || 0} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "otAdjust", e.target.value)} />
+                    <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 4 }}>円</span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">その他手当</span>
+                  <span className="value">
+                    <input type="number" step="1000" className="inline-input" style={{ width: 100 }}
+                      value={att.otherAllowance || 0} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "otherAllowance", e.target.value)} />
+                    <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 4 }}>円</span>
+                  </span>
+                </div>
+              </div>
+              {(r.basicPayAdj !== 0 || r.otAdjust !== 0 || r.otherAllowance !== 0) && (
+                <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 8 }}>
+                  * 月次調整が適用されています
+                </div>
+              )}
+            </Card>
+
             <Card title={`${emp.name} 支給内訳`}>
               {[
                 ["基本給", emp.basicPay],
+                ...(r.basicPayAdj !== 0 ? [["基本給調整", r.basicPayAdj]] : []),
                 ["職務手当", emp.dutyAllowance],
                 ["通勤手当", emp.commuteAllow],
                 [`残業手当（${att.legalOT}h×1.25）`, r.otLegal],
                 [`法定内残業（${att.prescribedOT}h×1.00）`, r.otPrescribed],
                 [`深夜残業（${att.nightOT}h×1.25）`, r.otNight],
                 [`休日労働（${att.holidayOT}h×1.35）`, r.otHoliday],
+                ...(r.otAdjust !== 0 ? [["残業手当調整", r.otAdjust]] : []),
+                ...(r.otherAllowance !== 0 ? [["その他手当", r.otherAllowance]] : []),
               ].map(([label, val], i) => (
                 <div className="detail-row" key={i}>
                   <span className="label">{label}</span>
-                  <span className="value positive">{val > 0 ? `¥${fmt(val)}` : "¥0"}</span>
+                  <span className="value positive">{val > 0 ? `¥${fmt(val)}` : val < 0 ? `-¥${fmt(Math.abs(val))}` : "¥0"}</span>
                 </div>
               ))}
               <div className="detail-total success">
@@ -1165,6 +1270,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   const departments = settings?.departments || ["運送事業"];
   const jobTypes = settings?.jobTypes || ["トラックドライバー"];
   const defaultAvgHours = Number(settings?.avgMonthlyHoursDefault) || 173.0;
+  // New hire form state
   const [newName, setNewName] = useState("");
   const [newJoinDate, setNewJoinDate] = useState(todayStr);
   const [newEmploymentType, setNewEmploymentType] = useState("正社員");
@@ -1179,58 +1285,59 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   const [newHasKaigo, setNewHasKaigo] = useState(false);
   const [newHasEmployment, setNewHasEmployment] = useState(true);
   const [newHasPension, setNewHasPension] = useState(true);
+  // UI state
   const [activeTab, setActiveTab] = useState("在籍者");
   const [query, setQuery] = useState("");
   const [onboardingMessage, setOnboardingMessage] = useState("");
   const [onboardingErrors, setOnboardingErrors] = useState({});
   const [showForm, setShowForm] = useState(false);
+  // Edit panel: buffer-based editing with explicit save
   const [editingId, setEditingId] = useState(null);
+  const [editBuf, setEditBuf] = useState(null);
+  const [editDirty, setEditDirty] = useState(false);
+  const [editSavedMsg, setEditSavedMsg] = useState("");
+
+  const openEdit = (emp) => {
+    if (editDirty && editingId !== null) {
+      if (!window.confirm("未保存の変更があります。破棄しますか？")) return;
+    }
+    setEditingId(emp.id);
+    setEditBuf({ ...emp });
+    setEditDirty(false);
+    setEditSavedMsg("");
+  };
+  const closeEdit = () => {
+    if (editDirty) {
+      if (!window.confirm("未保存の変更があります。破棄しますか？")) return;
+    }
+    setEditingId(null);
+    setEditBuf(null);
+    setEditDirty(false);
+    setEditSavedMsg("");
+  };
+  const updateBuf = (field, value) => {
+    setEditBuf((prev) => ({ ...prev, [field]: value }));
+    setEditDirty(true);
+    setEditSavedMsg("");
+  };
+  const updateBufNum = (field, value) => {
+    updateBuf(field, value === "" ? "" : Number(value));
+  };
+  const saveEdit = () => {
+    if (!editBuf) return;
+    setEmployees((prev) => prev.map((e) => e.id === editBuf.id ? { ...editBuf } : e));
+    setEditDirty(false);
+    setEditSavedMsg("保存しました");
+    if (setChangeLogs) {
+      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "更新", text: `${editBuf.name} の情報を更新` }, ...prev].slice(0, 30));
+    }
+    setTimeout(() => setEditSavedMsg(""), 3000);
+  };
 
   const employmentTemplate = (type) => {
-    if (type === "役員") {
-      return {
-        basicPay: 370000,
-        dutyAllowance: 0,
-        stdMonthly: 380000,
-        residentTax: 16000,
-        dependents: 0,
-        hasKaigo: true,
-        hasEmployment: false,
-        hasPension: true,
-        isOfficer: true,
-      };
-    }
-    if (type === "嘱託") {
-      return {
-        basicPay: 100000,
-        dutyAllowance: 0,
-        stdMonthly: 104000,
-        residentTax: 0,
-        dependents: 0,
-        hasKaigo: false,
-        hasEmployment: false,
-        hasPension: false,
-        isOfficer: false,
-      };
-    }
-    return {
-      basicPay: 210000,
-      dutyAllowance: 10000,
-      stdMonthly: 260000,
-      residentTax: 13000,
-      dependents: 0,
-      hasKaigo: false,
-      hasEmployment: true,
-      hasPension: true,
-      isOfficer: false,
-    };
-  };
-
-  const updateEmployee = (id, field, value) => {
-    setEmployees((prev) => prev.map((e) => e.id === id ? { ...e, [field]: value } : e));
-  };
-  const updateEmployeeNum = (id, field, value) => {
-    updateEmployee(id, field, value === "" ? "" : Number(value));
+    if (type === "役員") return { basicPay: 370000, dutyAllowance: 0, stdMonthly: 380000, residentTax: 16000, dependents: 0, hasKaigo: true, hasEmployment: false, hasPension: true, isOfficer: true };
+    if (type === "嘱託") return { basicPay: 100000, dutyAllowance: 0, stdMonthly: 104000, residentTax: 0, dependents: 0, hasKaigo: false, hasEmployment: false, hasPension: false, isOfficer: false };
+    return { basicPay: 210000, dutyAllowance: 10000, stdMonthly: 260000, residentTax: 13000, dependents: 0, hasKaigo: false, hasEmployment: true, hasPension: true, isOfficer: false };
   };
 
   useEffect(() => {
@@ -1239,37 +1346,20 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
 
   const applyTemplate = () => {
     const t = employmentTemplate(newEmploymentType);
-    setNewBasePay(String(t.basicPay));
-    setNewDutyAllowance(String(t.dutyAllowance));
-    setNewStdMonthly(String(t.stdMonthly));
-    setNewResidentTax(String(t.residentTax));
-    setNewDependents(String(t.dependents));
-    setNewHasKaigo(t.hasKaigo);
-    setNewHasEmployment(t.hasEmployment);
-    setNewHasPension(t.hasPension);
+    setNewBasePay(String(t.basicPay)); setNewDutyAllowance(String(t.dutyAllowance));
+    setNewStdMonthly(String(t.stdMonthly)); setNewResidentTax(String(t.residentTax));
+    setNewDependents(String(t.dependents)); setNewHasKaigo(t.hasKaigo);
+    setNewHasEmployment(t.hasEmployment); setNewHasPension(t.hasPension);
     setOnboardingErrors({});
   };
 
-  const applyTemplateToEmployee = (id) => {
-    const target = employees.find((e) => String(e.id) === String(id));
-    if (!target) return;
-    const type = target.employmentType || (target.isOfficer ? "役員" : "正社員");
+  const applyTemplateToEditBuf = () => {
+    if (!editBuf) return;
+    const type = editBuf.employmentType || (editBuf.isOfficer ? "役員" : "正社員");
     const t = employmentTemplate(type);
-    setEmployees((prev) =>
-      prev.map((e) =>
-        String(e.id) === String(id)
-          ? {
-              ...e,
-              ...t,
-              employmentType: type,
-              note: `${e.note || ""}${e.note ? " / " : ""}${type}テンプレ適用(${todayStr})`,
-            }
-          : e
-      )
-    );
-    if (setChangeLogs) {
-      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "更新", text: `${target.name} に${type}テンプレを適用` }, ...prev].slice(0, 30));
-    }
+    setEditBuf((prev) => ({ ...prev, ...t, employmentType: type }));
+    setEditDirty(true);
+    setEditSavedMsg("");
   };
 
   const getEmployeeSetupIssues = (emp) => {
@@ -1284,33 +1374,19 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     return issues;
   };
 
-  const setupPendingEmployees = useMemo(
-    () =>
-      employees
-        .map((emp) => ({ emp, issues: getEmployeeSetupIssues(emp) }))
-        .filter((row) => row.issues.length > 0),
-    [employees]
-  );
-
   const offboardEmployee = (id) => {
     const target = employees.find((e) => String(e.id) === String(id));
     if (!target || target.status !== "在籍") return;
+    if (!window.confirm(`${target.name} を退職処理しますか？`)) return;
     setEmployees((prev) =>
       prev.map((e) =>
         String(e.id) === String(id)
-          ? {
-              ...e,
-              status: "退職",
-              leaveDate: e.leaveDate || todayStr,
-              hasEmployment: false,
-              note: `${e.note || ""}${e.note ? " / " : ""}退職処理(${todayStr})`,
-            }
+          ? { ...e, status: "退職", leaveDate: e.leaveDate || todayStr, hasEmployment: false, note: `${e.note || ""}${e.note ? " / " : ""}退職処理(${todayStr})` }
           : e
       )
     );
-    if (setChangeLogs) {
-      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "退職", text: `${target.name} を退職処理` }, ...prev].slice(0, 30));
-    }
+    if (editingId === id) { setEditingId(null); setEditBuf(null); setEditDirty(false); }
+    if (setChangeLogs) setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "退職", text: `${target.name} を退職処理` }, ...prev].slice(0, 30));
   };
 
   const reactivateEmployee = (id) => {
@@ -1319,17 +1395,11 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     setEmployees((prev) =>
       prev.map((e) =>
         String(e.id) === String(id)
-          ? {
-              ...e,
-              status: "在籍",
-              note: `${e.note || ""}${e.note ? " / " : ""}在籍へ戻す(${todayStr})`,
-            }
+          ? { ...e, status: "在籍", note: `${e.note || ""}${e.note ? " / " : ""}在籍へ戻す(${todayStr})` }
           : e
       )
     );
-    if (setChangeLogs) {
-      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "復帰", text: `${target.name} を在籍に戻す` }, ...prev].slice(0, 30));
-    }
+    if (setChangeLogs) setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "復帰", text: `${target.name} を在籍に戻す` }, ...prev].slice(0, 30));
   };
 
   const validateNewHire = () => {
@@ -1366,9 +1436,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     setNewName(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0");
     setOnboardingMessage(`${newEmployee.name} を登録しました`);
     setShowForm(false);
-    if (setChangeLogs) {
-      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "入社", text: `${newEmployee.name} (${newEmployee.employmentType}) を登録` }, ...prev].slice(0, 30));
-    }
+    if (setChangeLogs) setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "入社", text: `${newEmployee.name} (${newEmployee.employmentType}) を登録` }, ...prev].slice(0, 30));
     if (moveToPayroll && onGoPayroll) onGoPayroll();
   };
 
@@ -1376,10 +1444,12 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     setEmployees((prev) => prev.filter((e) => e.id !== id));
     setAttendance((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setPaidLeaveBalance((prev) => prev.filter((r) => r.empId !== id));
+    if (editingId === id) { setEditingId(null); setEditBuf(null); setEditDirty(false); }
   };
 
   const activeCount = employees.filter((e) => e.status === "在籍").length;
   const retiredCount = employees.filter((e) => e.status !== "在籍").length;
+  const setupPendingCount = employees.filter((e) => getEmployeeSetupIssues(e).length > 0).length;
 
   const filteredEmployees = employees
     .filter((emp) => activeTab === "在籍者" ? emp.status === "在籍" : emp.status !== "在籍")
@@ -1389,233 +1459,185 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
       return String(emp.name).toLowerCase().includes(q) || String(emp.jobType).toLowerCase().includes(q) || String(emp.dept).toLowerCase().includes(q);
     });
 
+  // Short note: show only last segment
+  const shortNote = (note) => {
+    if (!note) return null;
+    const parts = note.split(" / ");
+    return parts[parts.length - 1];
+  };
+
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">従業員一覧</h1>
+        <div>
+          <h1 className="page-title">従業員一覧</h1>
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            <Badge variant="success">在籍 {activeCount}名</Badge>
+            {retiredCount > 0 && <Badge variant="default">退職 {retiredCount}名</Badge>}
+            {setupPendingCount > 0 && <Badge variant="warning">要設定 {setupPendingCount}名</Badge>}
+          </div>
+        </div>
         <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? "フォームを閉じる" : "+ 新規登録"}
+          {showForm ? "閉じる" : "+ 新規登録"}
         </button>
       </div>
 
-      {/* Onboarding Form (collapsible) */}
+      {/* Onboarding Form */}
       {showForm && (
         <Card title="新規従業員登録">
           <div className="form-grid" style={{ marginBottom: 12 }}>
-            <label className="form-label">
-              氏名 *
-              <input placeholder="山田 太郎" value={newName} onChange={(e) => setNewName(e.target.value)} className={onboardingErrors.newName ? "error" : ""} />
-              {onboardingErrors.newName && <span className="error-text">{onboardingErrors.newName}</span>}
-            </label>
-            <label className="form-label">
-              入社日 *
-              <input type="date" value={newJoinDate} onChange={(e) => setNewJoinDate(e.target.value)} className={onboardingErrors.newJoinDate ? "error" : ""} />
-            </label>
-            <label className="form-label">
-              雇用区分 *
-              <select value={newEmploymentType} onChange={(e) => setNewEmploymentType(e.target.value)}>
-                <option value="正社員">正社員</option>
-                <option value="嘱託">嘱託</option>
-                <option value="役員">役員</option>
-              </select>
-            </label>
-            <label className="form-label">
-              部門
-              <select value={newDept} onChange={(e) => setNewDept(e.target.value)}>
-                {departments.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </label>
-            <label className="form-label">
-              職種
-              <select value={newJobType} onChange={(e) => setNewJobType(e.target.value)}>
-                {jobTypes.map((j) => <option key={j} value={j}>{j}</option>)}
-              </select>
-            </label>
-            <label className="form-label">
-              扶養人数
-              <input type="number" min="0" step="1" value={newDependents} onChange={(e) => setNewDependents(e.target.value)} className={onboardingErrors.newDependents ? "error" : ""} />
-            </label>
-            <label className="form-label">
-              基本給（円）
-              <input value={newBasePay} onChange={(e) => setNewBasePay(e.target.value)} className={onboardingErrors.newBasePay ? "error" : ""} />
-            </label>
-            <label className="form-label">
-              職務手当（円）
-              <input value={newDutyAllowance} onChange={(e) => setNewDutyAllowance(e.target.value)} className={onboardingErrors.newDutyAllowance ? "error" : ""} />
-            </label>
-            <label className="form-label">
-              通勤手当（円）
-              <input value={newCommuteAllow} onChange={(e) => setNewCommuteAllow(e.target.value)} />
-            </label>
-            <label className="form-label">
-              標準報酬月額（等級選択）
+            <label className="form-label">氏名 *<input placeholder="山田 太郎" value={newName} onChange={(e) => setNewName(e.target.value)} className={onboardingErrors.newName ? "error" : ""} />{onboardingErrors.newName && <span className="error-text">{onboardingErrors.newName}</span>}</label>
+            <label className="form-label">入社日 *<input type="date" value={newJoinDate} onChange={(e) => setNewJoinDate(e.target.value)} className={onboardingErrors.newJoinDate ? "error" : ""} /></label>
+            <label className="form-label">雇用区分 *<select value={newEmploymentType} onChange={(e) => setNewEmploymentType(e.target.value)}><option value="正社員">正社員</option><option value="嘱託">嘱託</option><option value="役員">役員</option></select></label>
+            <label className="form-label">部門<select value={newDept} onChange={(e) => setNewDept(e.target.value)}>{departments.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+            <label className="form-label">職種<select value={newJobType} onChange={(e) => setNewJobType(e.target.value)}>{jobTypes.map((j) => <option key={j} value={j}>{j}</option>)}</select></label>
+            <label className="form-label">扶養人数<input type="number" min="0" step="1" value={newDependents} onChange={(e) => setNewDependents(e.target.value)} className={onboardingErrors.newDependents ? "error" : ""} /></label>
+            <label className="form-label">基本給（円）<input value={newBasePay} onChange={(e) => setNewBasePay(e.target.value)} className={onboardingErrors.newBasePay ? "error" : ""} /></label>
+            <label className="form-label">職務手当（円）<input value={newDutyAllowance} onChange={(e) => setNewDutyAllowance(e.target.value)} className={onboardingErrors.newDutyAllowance ? "error" : ""} /></label>
+            <label className="form-label">通勤手当（円）<input value={newCommuteAllow} onChange={(e) => setNewCommuteAllow(e.target.value)} /></label>
+            <label className="form-label">標準報酬月額
               <select value={newStdMonthly} onChange={(e) => setNewStdMonthly(e.target.value)} className={onboardingErrors.newStdMonthly ? "error" : ""}>
                 <option value="">-- 等級を選択 --</option>
-                {STD_MONTHLY_GRADES.map((g) => (
-                  <option key={g.grade} value={String(g.stdMonthly)}>
-                    {g.grade}等級 — ¥{g.stdMonthly.toLocaleString()}{g.grade <= 32 ? "" : "（健保のみ）"}
-                  </option>
-                ))}
+                {STD_MONTHLY_GRADES.map((g) => (<option key={g.grade} value={String(g.stdMonthly)}>{g.grade}等級 — ¥{g.stdMonthly.toLocaleString()}{g.grade <= 32 ? "" : "（健保のみ）"}</option>))}
               </select>
-              {newStdMonthly && findGradeByStdMonthly(newStdMonthly) && (
-                <span style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                  {findGradeByStdMonthly(newStdMonthly).grade}等級 / 報酬月額 ¥{findGradeByStdMonthly(newStdMonthly).lowerBound.toLocaleString()}〜
-                </span>
-              )}
             </label>
-            <label className="form-label">
-              住民税（月額・円）
-              <input value={newResidentTax} onChange={(e) => setNewResidentTax(e.target.value)} className={onboardingErrors.newResidentTax ? "error" : ""} />
-            </label>
+            <label className="form-label">住民税（月額・円）<input value={newResidentTax} onChange={(e) => setNewResidentTax(e.target.value)} className={onboardingErrors.newResidentTax ? "error" : ""} /></label>
           </div>
-
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={newHasKaigo} onChange={(e) => setNewHasKaigo(e.target.checked)} />
-              介護保険（40歳以上）
-            </label>
-            <label className={`checkbox-label${newEmploymentType === "役員" ? "" : ""}`} style={newEmploymentType === "役員" ? { opacity: 0.5 } : {}}>
-              <input type="checkbox" checked={newHasEmployment} disabled={newEmploymentType === "役員"} onChange={(e) => setNewHasEmployment(e.target.checked)} />
-              雇用保険
-            </label>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={newHasPension} onChange={(e) => setNewHasPension(e.target.checked)} />
-              厚生年金
-            </label>
+            <label className="checkbox-label"><input type="checkbox" checked={newHasKaigo} onChange={(e) => setNewHasKaigo(e.target.checked)} /> 介護保険</label>
+            <label className="checkbox-label" style={newEmploymentType === "役員" ? { opacity: 0.5 } : {}}><input type="checkbox" checked={newHasEmployment} disabled={newEmploymentType === "役員"} onChange={(e) => setNewHasEmployment(e.target.checked)} /> 雇用保険</label>
+            <label className="checkbox-label"><input type="checkbox" checked={newHasPension} onChange={(e) => setNewHasPension(e.target.checked)} /> 厚生年金</label>
             <button className="btn btn-secondary btn-sm" onClick={applyTemplate}>{newEmploymentType}テンプレ適用</button>
           </div>
-
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-primary" onClick={() => addDriver(false)}>登録</button>
             <button className="btn btn-success" onClick={() => addDriver(true)}>登録して給与計算へ</button>
           </div>
-          {onboardingMessage && (
-            <div style={{ marginTop: 8, fontSize: 12, color: Object.keys(onboardingErrors).length > 0 ? "#dc2626" : "#16a34a" }}>
-              {onboardingMessage}
-            </div>
-          )}
+          {onboardingMessage && <div style={{ marginTop: 8, fontSize: 12, color: Object.keys(onboardingErrors).length > 0 ? "#dc2626" : "#16a34a" }}>{onboardingMessage}</div>}
         </Card>
       )}
 
-      <Card title="入退社ワークフロー">
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-          <Badge variant="success">在籍 {activeCount}名</Badge>
-          {retiredCount > 0 && <Badge variant="default">退職 {retiredCount}名</Badge>}
-          {setupPendingEmployees.length > 0 && <Badge variant="warning">要対応 {setupPendingEmployees.length}名</Badge>}
-        </div>
-        {setupPendingEmployees.length > 0 ? (
-          <div>
-            <div className="section-divider">設定未完了の従業員</div>
-            {setupPendingEmployees.slice(0, 8).map(({ emp, issues }) => (
-              <div key={`pending-${emp.id}`} className="workflow-card pending">
-                <div className="workflow-card-info">
-                  <strong>{emp.name}</strong>
-                  <span style={{ marginLeft: 6, color: "#92400e" }}>{issues.join(" / ")}</span>
-                </div>
-                <div className="workflow-card-actions">
-                  <button className="btn btn-sm btn-secondary" onClick={() => applyTemplateToEmployee(emp.id)}>テンプレ適用</button>
-                  <button className="btn btn-sm btn-outline" onClick={() => setEditingId(emp.id)}>編集</button>
-                </div>
-              </div>
+      {/* Employee List - compact table */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <div className="tabs" style={{ marginBottom: 0 }}>
+            {["在籍者", "退職者"].map((tab) => (
+              <button key={tab} onClick={() => setActiveTab(tab)} className={`tab-btn${activeTab === tab ? " active" : ""}`}>{tab}</button>
             ))}
           </div>
-        ) : (
-          <div className="alert-box success" style={{ marginTop: 0 }}>
-            <div style={{ fontWeight: 700 }}>✓ 全従業員の設定が完了しています</div>
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>入社時は「新規登録」、退社時は従業員行の「退社処理」ボタンを使用してください</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input placeholder="検索..." value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 160 }} />
+            <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" }}>{filteredEmployees.length}件</span>
           </div>
-        )}
-      </Card>
-
-      {/* Employee List */}
-      <Card>
-        <div className="tabs">
-          {["在籍者", "退職者"].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`tab-btn${activeTab === tab ? " active" : ""}`}>{tab}</button>
-          ))}
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-          <input placeholder="氏名・職種・部門で検索" value={query} onChange={(e) => setQuery(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-          <span style={{ fontSize: 12, color: "#94a3b8", alignSelf: "center" }}>{filteredEmployees.length}件 / 全{employees.length}件</span>
-        </div>
-        <div>
-          {filteredEmployees.map((emp) => (
-            <div key={emp.id}>
-              <div className="emp-row">
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <div className="emp-name">{emp.name}</div>
-                    <span className={`status-pill ${emp.status === "在籍" ? "active" : "retired"}`}>
-                      {emp.status === "在籍" ? "在籍" : "退職"}
-                    </span>
-                    {emp.isOfficer && <Badge variant="warning">役員</Badge>}
-                    {getEmployeeSetupIssues(emp).length > 0 && <Badge variant="warning">要設定</Badge>}
-                  </div>
-                  <div className="emp-info">{emp.dept} / {emp.jobType}</div>
-                  {emp.note && <div className="emp-note">{emp.note}</div>}
-                </div>
-                <div className="emp-info">
-                  <div>{emp.employmentType || (emp.isOfficer ? "役員" : "正社員")} / 入社: {emp.joinDate || "-"}</div>
-                  {emp.leaveDate && <div>退職: {emp.leaveDate}</div>}
-                </div>
-                <div className="emp-detail">
-                  基本給 ¥{fmt(emp.basicPay)} / 標報 ¥{fmt(emp.stdMonthly)}
-                  {emp.hasKaigo && <Badge variant="danger" style={{ marginLeft: 4 }}>介護</Badge>}
-                </div>
-                <div className="emp-actions">
-                  <button className="btn btn-sm btn-outline" onClick={() => setEditingId(editingId === emp.id ? null : emp.id)}>
-                    {editingId === emp.id ? "閉じる" : "編集"}
-                  </button>
-                  <button className={`btn btn-sm ${emp.status === "在籍" ? "btn-danger" : "btn-success"}`} onClick={() => (emp.status === "在籍" ? offboardEmployee(emp.id) : reactivateEmployee(emp.id))}>
-                    {emp.status === "在籍" ? "退社処理" : "在籍に戻す"}
-                  </button>
-                  <button className="btn btn-sm btn-danger" onClick={() => { if (window.confirm(`${emp.name} を削除しますか？この操作は元に戻せません。`)) removeEmployee(emp.id); }}>削除</button>
-                </div>
-              </div>
-              {editingId === emp.id && (
-                <div style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid var(--line)", borderRadius: "0 0 var(--radius) var(--radius)" }}>
-                  <div className="form-grid" style={{ marginBottom: 8 }}>
-                    <label className="form-label">氏名<input value={emp.name} onChange={(e) => updateEmployee(emp.id, "name", e.target.value)} /></label>
-                    <label className="form-label">部門<select value={emp.dept} onChange={(e) => updateEmployee(emp.id, "dept", e.target.value)}>{departments.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
-                    <label className="form-label">職種<select value={emp.jobType} onChange={(e) => updateEmployee(emp.id, "jobType", e.target.value)}>{jobTypes.map((j) => <option key={j} value={j}>{j}</option>)}</select></label>
-                    <label className="form-label">雇用区分<select value={emp.employmentType || (emp.isOfficer ? "役員" : "正社員")} onChange={(e) => { updateEmployee(emp.id, "employmentType", e.target.value); updateEmployee(emp.id, "isOfficer", e.target.value === "役員"); }}><option value="正社員">正社員</option><option value="嘱託">嘱託</option><option value="役員">役員</option></select></label>
-                    <label className="form-label">基本給（円）<input type="number" value={emp.basicPay} onChange={(e) => updateEmployeeNum(emp.id, "basicPay", e.target.value)} /></label>
-                    <label className="form-label">職務手当（円）<input type="number" value={emp.dutyAllowance} onChange={(e) => updateEmployeeNum(emp.id, "dutyAllowance", e.target.value)} /></label>
-                    <label className="form-label">通勤手当（円）<input type="number" value={emp.commuteAllow} onChange={(e) => updateEmployeeNum(emp.id, "commuteAllow", e.target.value)} /></label>
-                    <label className="form-label">標準報酬月額（等級選択）
-                      <select value={String(emp.stdMonthly || "")} onChange={(e) => updateEmployeeNum(emp.id, "stdMonthly", e.target.value)}>
-                        <option value="">-- 等級を選択 --</option>
-                        {STD_MONTHLY_GRADES.map((g) => (
-                          <option key={g.grade} value={String(g.stdMonthly)}>
-                            {g.grade}等級 — ¥{g.stdMonthly.toLocaleString()}{g.grade <= 32 ? "" : "（健保のみ）"}
-                          </option>
-                        ))}
-                      </select>
-                      {emp.stdMonthly > 0 && !findGradeByStdMonthly(emp.stdMonthly) && (
-                        <span style={{ fontSize: 11, color: "#f59e0b", marginTop: 2 }}>※ 等級表にない金額です。等級を選択し直してください。</span>
-                      )}
-                      {emp.stdMonthly > 0 && findGradeByStdMonthly(emp.stdMonthly) && (
-                        <span style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                          {findGradeByStdMonthly(emp.stdMonthly).grade}等級 / 報酬月額 ¥{findGradeByStdMonthly(emp.stdMonthly).lowerBound.toLocaleString()}〜
-                        </span>
-                      )}
-                    </label>
-                    <label className="form-label">住民税（月額・円）<input type="number" value={emp.residentTax} onChange={(e) => updateEmployeeNum(emp.id, "residentTax", e.target.value)} /></label>
-                    <label className="form-label">扶養人数<input type="number" min="0" step="1" value={emp.dependents} onChange={(e) => updateEmployeeNum(emp.id, "dependents", e.target.value)} /></label>
-                    <label className="form-label">月平均所定労働時間<input type="number" step="0.1" value={emp.avgMonthlyHours} onChange={(e) => updateEmployeeNum(emp.id, "avgMonthlyHours", e.target.value)} /></label>
-                    <label className="form-label">入社日<input type="date" value={emp.joinDate || ""} onChange={(e) => updateEmployee(emp.id, "joinDate", e.target.value)} /></label>
-                    <label className="form-label">退職日<input type="date" value={emp.leaveDate || ""} onChange={(e) => updateEmployee(emp.id, "leaveDate", e.target.value)} /></label>
-                  </div>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    <label className="checkbox-label"><input type="checkbox" checked={emp.hasKaigo} onChange={(e) => updateEmployee(emp.id, "hasKaigo", e.target.checked)} /> 介護保険</label>
-                    <label className="checkbox-label"><input type="checkbox" checked={emp.hasPension} onChange={(e) => updateEmployee(emp.id, "hasPension", e.target.checked)} /> 厚生年金</label>
-                    <label className="checkbox-label"><input type="checkbox" checked={emp.hasEmployment} disabled={emp.isOfficer} onChange={(e) => updateEmployee(emp.id, "hasEmployment", e.target.checked)} /> 雇用保険</label>
-                  </div>
-                  <label className="form-label" style={{ marginTop: 8 }}>備考<input value={emp.note || ""} onChange={(e) => updateEmployee(emp.id, "note", e.target.value)} /></label>
-                </div>
-              )}
-            </div>
-          ))}
+        <div style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>氏名</th>
+                <th>区分</th>
+                <th>部門 / 職種</th>
+                <th className="right">基本給</th>
+                <th className="right">標報</th>
+                <th>保険</th>
+                <th>状態</th>
+                <th style={{ width: 140 }}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEmployees.map((emp) => {
+                const issues = getEmployeeSetupIssues(emp);
+                const isEditing = editingId === emp.id;
+                return (
+                  <React.Fragment key={emp.id}>
+                    <tr className={isEditing ? "selected" : ""} style={{ cursor: "pointer" }}
+                      onClick={() => { if (!isEditing) openEdit(emp); else closeEdit(); }}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{emp.name}</div>
+                        {shortNote(emp.note) && <div style={{ fontSize: 10, color: "var(--warning)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortNote(emp.note)}</div>}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{emp.employmentType || (emp.isOfficer ? "役員" : "正社員")}</td>
+                      <td style={{ fontSize: 12, color: "var(--muted)" }}>{emp.dept} / {emp.jobType}</td>
+                      <td className="right mono" style={{ fontSize: 12 }}>¥{fmt(emp.basicPay)}</td>
+                      <td className="right mono" style={{ fontSize: 12 }}>¥{fmt(emp.stdMonthly)}</td>
+                      <td style={{ fontSize: 10 }}>
+                        {emp.hasKaigo && <span style={{ color: "var(--danger)", marginRight: 4 }}>介護</span>}
+                        {emp.hasPension && <span style={{ color: "var(--accent)", marginRight: 4 }}>年金</span>}
+                        {emp.hasEmployment && <span style={{ color: "var(--success)" }}>雇保</span>}
+                      </td>
+                      <td>
+                        {issues.length > 0
+                          ? <Badge variant="warning">{issues[0]}</Badge>
+                          : <span className={`status-pill ${emp.status === "在籍" ? "active" : "retired"}`}>{emp.status === "在籍" ? "OK" : "退職"}</span>
+                        }
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button className="btn btn-sm btn-outline" onClick={() => isEditing ? closeEdit() : openEdit(emp)}>
+                            {isEditing ? "閉じる" : "編集"}
+                          </button>
+                          {emp.status === "在籍"
+                            ? <button className="btn btn-sm btn-danger" onClick={() => offboardEmployee(emp.id)}>退社</button>
+                            : <button className="btn btn-sm btn-success" onClick={() => reactivateEmployee(emp.id)}>復帰</button>
+                          }
+                          <button className="btn btn-sm btn-danger" style={{ padding: "5px 6px" }} onClick={() => { if (window.confirm(`${emp.name} を削除しますか？`)) removeEmployee(emp.id); }} title="削除">✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isEditing && editBuf && (
+                      <tr className="edit-row-expand">
+                        <td colSpan={8} style={{ padding: 0, border: "none" }}>
+                          <div className="inline-edit-panel">
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <span style={{ fontWeight: 700, fontSize: 15 }}>{editBuf.name}</span>
+                                <span style={{ fontSize: 12, color: "var(--muted)" }}>の編集</span>
+                                {editDirty && <Badge variant="warning">未保存</Badge>}
+                                {editSavedMsg && <Badge variant="success">{editSavedMsg}</Badge>}
+                              </div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button className="btn btn-sm btn-secondary" onClick={applyTemplateToEditBuf}>テンプレ適用</button>
+                                <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={!editDirty}>保存</button>
+                                <button className="btn btn-sm btn-outline" onClick={closeEdit}>閉じる</button>
+                              </div>
+                            </div>
+                            <div className="form-grid">
+                              <label className="form-label">氏名<input value={editBuf.name} onChange={(e) => updateBuf("name", e.target.value)} /></label>
+                              <label className="form-label">雇用区分<select value={editBuf.employmentType || (editBuf.isOfficer ? "役員" : "正社員")} onChange={(e) => { updateBuf("employmentType", e.target.value); updateBuf("isOfficer", e.target.value === "役員"); }}><option value="正社員">正社員</option><option value="嘱託">嘱託</option><option value="役員">役員</option></select></label>
+                              <label className="form-label">部門<select value={editBuf.dept} onChange={(e) => updateBuf("dept", e.target.value)}>{departments.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
+                              <label className="form-label">職種<select value={editBuf.jobType} onChange={(e) => updateBuf("jobType", e.target.value)}>{jobTypes.map((j) => <option key={j} value={j}>{j}</option>)}</select></label>
+                              <label className="form-label">基本給（円）<input type="number" value={editBuf.basicPay} onChange={(e) => updateBufNum("basicPay", e.target.value)} /></label>
+                              <label className="form-label">職務手当（円）<input type="number" value={editBuf.dutyAllowance} onChange={(e) => updateBufNum("dutyAllowance", e.target.value)} /></label>
+                              <label className="form-label">通勤手当（円）<input type="number" value={editBuf.commuteAllow} onChange={(e) => updateBufNum("commuteAllow", e.target.value)} /></label>
+                              <label className="form-label">標準報酬月額
+                                <select value={String(editBuf.stdMonthly || "")} onChange={(e) => updateBufNum("stdMonthly", e.target.value)}>
+                                  <option value="">-- 等級を選択 --</option>
+                                  {STD_MONTHLY_GRADES.map((g) => (<option key={g.grade} value={String(g.stdMonthly)}>{g.grade}等級 — ¥{g.stdMonthly.toLocaleString()}{g.grade <= 32 ? "" : "（健保のみ）"}</option>))}
+                                </select>
+                                {editBuf.stdMonthly > 0 && !findGradeByStdMonthly(editBuf.stdMonthly) && <span style={{ fontSize: 11, color: "#f59e0b", marginTop: 2 }}>※ 等級表にない金額です</span>}
+                                {editBuf.stdMonthly > 0 && findGradeByStdMonthly(editBuf.stdMonthly) && <span style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{findGradeByStdMonthly(editBuf.stdMonthly).grade}等級</span>}
+                              </label>
+                              <label className="form-label">住民税（月額・円）<input type="number" value={editBuf.residentTax} onChange={(e) => updateBufNum("residentTax", e.target.value)} /></label>
+                              <label className="form-label">扶養人数<input type="number" min="0" step="1" value={editBuf.dependents} onChange={(e) => updateBufNum("dependents", e.target.value)} /></label>
+                              <label className="form-label">月平均所定労働時間<input type="number" step="0.1" value={editBuf.avgMonthlyHours} onChange={(e) => updateBufNum("avgMonthlyHours", e.target.value)} /></label>
+                              <label className="form-label">入社日<input type="date" value={editBuf.joinDate || ""} onChange={(e) => updateBuf("joinDate", e.target.value)} /></label>
+                              <label className="form-label">退職日<input type="date" value={editBuf.leaveDate || ""} onChange={(e) => updateBuf("leaveDate", e.target.value)} /></label>
+                            </div>
+                            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
+                              <label className="checkbox-label"><input type="checkbox" checked={editBuf.hasKaigo} onChange={(e) => updateBuf("hasKaigo", e.target.checked)} /> 介護保険</label>
+                              <label className="checkbox-label"><input type="checkbox" checked={editBuf.hasPension} onChange={(e) => updateBuf("hasPension", e.target.checked)} /> 厚生年金</label>
+                              <label className="checkbox-label"><input type="checkbox" checked={editBuf.hasEmployment} disabled={editBuf.isOfficer} onChange={(e) => updateBuf("hasEmployment", e.target.checked)} /> 雇用保険</label>
+                            </div>
+                            <label className="form-label" style={{ marginTop: 10 }}>備考<input value={editBuf.note || ""} onChange={(e) => updateBuf("note", e.target.value)} /></label>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </Card>
     </div>
@@ -1627,12 +1649,26 @@ const normalizeSnapshotRow = (row) => ({
   empId: row.empId ?? row.employeeId,
   name: row.name ?? row.employeeName,
   jobType: row.jobType ?? row.dept ?? "",
+  dept: row.dept || row.jobType || "",
+  employmentType: row.employmentType || "",
   basicPay: row.basicPay || 0,
   dutyAllowance: row.dutyAllowance || 0,
+  commuteAllow: row.commuteAllow || 0,
   overtimePay: row.overtimePay ?? 0,
   prescribedOvertimePay: row.prescribedOvertimePay || 0,
   nightOvertimePay: row.nightOvertimePay ?? row.lateNightPay ?? 0,
   holidayPay: row.holidayPay || 0,
+  otAdjust: row.otAdjust || 0,
+  basicPayAdjust: row.basicPayAdjust || 0,
+  otherAllowance: row.otherAllowance || 0,
+  workDays: row.workDays || 0,
+  scheduledDays: row.scheduledDays || 0,
+  workHours: row.workHours || 0,
+  scheduledHours: row.scheduledHours || 0,
+  legalOT: row.legalOT || 0,
+  prescribedOT: row.prescribedOT || 0,
+  nightOT: row.nightOT || 0,
+  holidayOT: row.holidayOT || 0,
   gross: row.gross ?? row.grossPay ?? 0,
   health: row.health ?? row.healthInsurance ?? 0,
   kaigo: row.kaigo || 0,
@@ -1651,6 +1687,7 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
   const [selectedFiscalYear, setSelectedFiscalYear] = useState(fiscalYearOf(CURRENT_PROCESSING_MONTH));
   const [importMessage, setImportMessage] = useState("");
   const [mfCompareReport, setMfCompareReport] = useState(null);
+  const [payslipEmpId, setPayslipEmpId] = useState(null);
   const monthSet = useMemo(() => new Set(monthlyHistory.map((m) => m.month)), [monthlyHistory]);
   const fiscalYears = Array.from(new Set(monthlyHistory.map((m) => fiscalYearOf(m.month)))).sort((a, b) => a - b);
   const latestFiscalYear = Math.max(fiscalYearOf(CURRENT_PROCESSING_MONTH), ...(fiscalYears.length ? fiscalYears : [fiscalYearOf(CURRENT_PROCESSING_MONTH)]));
@@ -1675,7 +1712,7 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
     if (month === CURRENT_PROCESSING_MONTH) {
       return employees
         .filter((e) => e.status === "在籍")
-        .map((emp) => toSnapshotRowFromCalc(emp, calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings)));
+        .map((emp) => { const a = attendance[emp.id] || EMPTY_ATTENDANCE; return toSnapshotRowFromCalc(emp, calcPayroll(emp, a, settings), a); });
     }
     return [];
   };
@@ -1881,11 +1918,129 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
     setImportMessage(`${imported.length}ファイルを取り込みました（突合: ${monthFullLabel(compareTarget.month)}）`);
   };
 
-  const colHeaders = ["従業員", "職種", "基本給", "職務手当", "残業", "法定内", "深夜", "休日", "総支給", "健保", "介護", "厚年", "雇保", "所得税", "住民税", "年調", "控除計", "差引支給", ""];
+  // ---- 給与明細レンダラ ----
+  const renderPayslip = (row) => {
+    const monthText = monthFullLabel(targetMonth);
+    const payDateText = formatDateJP(selectedHistory?.payDate || "-");
+    const socialTotal = (row.health || 0) + (row.kaigo || 0) + (row.pension || 0) + (row.employment || 0);
+    const printPayslip = () => {
+      const el = document.getElementById("payslip-print-area");
+      if (!el) return;
+      const win = window.open("", "_blank", "width=900,height=1100");
+      if (!win) return;
+      win.document.open();
+      win.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${row.name}_${monthText}_給与明細</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px;font-size:12px}
+.payslip{max-width:800px;margin:0 auto;border:2px solid #1e293b;padding:0}
+.payslip-header{background:#1e293b;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+.payslip-header h2{font-size:18px;letter-spacing:2px}
+.payslip-meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #e2e8f0}
+.payslip-meta-item{padding:8px 16px;border-right:1px solid #e2e8f0;font-size:12px}
+.payslip-meta-item:last-child{border-right:none}
+.payslip-meta-item .label{color:#64748b;font-size:10px;display:block}
+.payslip-meta-item .val{font-weight:700;font-size:13px}
+.payslip-body{display:grid;grid-template-columns:1fr 1fr;min-height:0}
+.payslip-col{border-right:1px solid #e2e8f0}
+.payslip-col:last-child{border-right:none}
+.payslip-section-title{background:#f1f5f9;padding:6px 12px;font-weight:700;font-size:11px;color:#334155;border-bottom:1px solid #e2e8f0;border-top:1px solid #e2e8f0;letter-spacing:1px}
+.payslip-row{display:flex;justify-content:space-between;padding:5px 12px;border-bottom:1px solid #f1f5f9;font-size:12px}
+.payslip-row .lbl{color:#475569}
+.payslip-row .amt{font-family:ui-monospace,monospace;font-weight:500;text-align:right}
+.payslip-row.sub{background:#f8fafc}
+.payslip-total{display:flex;justify-content:space-between;padding:8px 12px;font-weight:700;font-size:13px;border-top:2px solid #cbd5e1}
+.payslip-total.green{background:#f0fdf4;color:#15803d}
+.payslip-total.red{background:#fef2f2;color:#dc2626}
+.payslip-total.blue{background:#eff6ff;color:#1d4ed8}
+.payslip-net{background:#1e293b;color:#fff;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;font-size:16px}
+.payslip-net .val{font-family:ui-monospace,monospace;font-size:22px;font-weight:700}
+.payslip-footer{padding:8px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;text-align:right}
+@media print{body{padding:0}.payslip{border-width:1px}}
+</style></head><body>`);
+      win.document.write(el.innerHTML);
+      win.document.write(`</body></html>`);
+      win.document.close();
+      setTimeout(() => win.print(), 300);
+    };
+    return (
+      <div style={{ padding: "16px 20px", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{row.name} の給与明細</h3>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-primary btn-sm" onClick={printPayslip}>印刷 / PDF保存</button>
+            <button className="btn btn-outline btn-sm" onClick={() => setPayslipEmpId(null)}>閉じる</button>
+          </div>
+        </div>
+        <div id="payslip-print-area">
+          <div className="payslip">
+            <div className="payslip-header">
+              <h2>給 与 明 細 書</h2>
+              <div style={{ fontSize: 12, textAlign: "right" }}><div>{companyName}</div></div>
+            </div>
+            <div className="payslip-meta">
+              <div className="payslip-meta-item"><span className="label">対象期間</span><span className="val">{monthText}</span></div>
+              <div className="payslip-meta-item"><span className="label">支給日</span><span className="val">{payDateText}</span></div>
+              <div className="payslip-meta-item"><span className="label">氏名</span><span className="val">{row.name}</span></div>
+            </div>
+            <div className="payslip-body">
+              <div className="payslip-col">
+                <div className="payslip-section-title">勤 怠</div>
+                <div className="payslip-row"><span className="lbl">出勤日数</span><span className="amt">{row.workDays || "-"} 日</span></div>
+                <div className="payslip-row"><span className="lbl">所定労働日数</span><span className="amt">{row.scheduledDays || "-"} 日</span></div>
+                <div className="payslip-row"><span className="lbl">出勤時間</span><span className="amt">{row.workHours || "-"} h</span></div>
+                <div className="payslip-row"><span className="lbl">所定労働時間</span><span className="amt">{row.scheduledHours || "-"} h</span></div>
+                <div className="payslip-row"><span className="lbl">時間外労働</span><span className="amt">{row.legalOT || "-"} h</span></div>
+                <div className="payslip-row"><span className="lbl">深夜労働</span><span className="amt">{row.nightOT || "-"} h</span></div>
+                <div className="payslip-row"><span className="lbl">休日労働</span><span className="amt">{row.holidayOT || "-"} h</span></div>
+                <div className="payslip-section-title">支 給</div>
+                <div className="payslip-row"><span className="lbl">基本給</span><span className="amt">{money(row.basicPay)}</span></div>
+                {(row.basicPayAdjust || 0) !== 0 && <div className="payslip-row sub"><span className="lbl">基本給調整</span><span className="amt">{money(row.basicPayAdjust)}</span></div>}
+                <div className="payslip-row"><span className="lbl">職務手当</span><span className="amt">{money(row.dutyAllowance)}</span></div>
+                <div className="payslip-row"><span className="lbl">通勤手当</span><span className="amt">{money(row.commuteAllow || 0)}</span></div>
+                <div className="payslip-row"><span className="lbl">時間外手当</span><span className="amt">{money(row.overtimePay)}</span></div>
+                {(row.prescribedOvertimePay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">所定外残業手当</span><span className="amt">{money(row.prescribedOvertimePay)}</span></div>}
+                {(row.nightOvertimePay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">深夜残業手当</span><span className="amt">{money(row.nightOvertimePay)}</span></div>}
+                {(row.holidayPay || 0) > 0 && <div className="payslip-row sub"><span className="lbl">休日労働手当</span><span className="amt">{money(row.holidayPay)}</span></div>}
+                {(row.otAdjust || 0) !== 0 && <div className="payslip-row sub"><span className="lbl">残業手当調整</span><span className="amt">{money(row.otAdjust)}</span></div>}
+                {(row.otherAllowance || 0) !== 0 && <div className="payslip-row"><span className="lbl">その他手当</span><span className="amt">{money(row.otherAllowance)}</span></div>}
+                <div className="payslip-total green"><span>支給合計</span><span>{money(row.gross)}</span></div>
+              </div>
+              <div className="payslip-col">
+                <div className="payslip-section-title">控 除</div>
+                <div className="payslip-row"><span className="lbl">健康保険料</span><span className="amt">{money(row.health)}</span></div>
+                <div className="payslip-row"><span className="lbl">介護保険料</span><span className="amt">{money(row.kaigo)}</span></div>
+                <div className="payslip-row"><span className="lbl">厚生年金保険料</span><span className="amt">{money(row.pension)}</span></div>
+                <div className="payslip-row"><span className="lbl">雇用保険料</span><span className="amt">{money(row.employment)}</span></div>
+                <div className="payslip-total red" style={{ borderTop: "1px solid #fca5a5" }}><span>社会保険料計</span><span>{money(socialTotal)}</span></div>
+                <div className="payslip-row" style={{ marginTop: 4 }}><span className="lbl">所得税</span><span className="amt">{money(row.incomeTax)}</span></div>
+                <div className="payslip-row"><span className="lbl">住民税</span><span className="amt">{money(row.residentTax)}</span></div>
+                {(row.yearAdjustment || 0) !== 0 && <div className="payslip-row"><span className="lbl">年末調整過不足</span><span className="amt">{money(row.yearAdjustment)}</span></div>}
+                <div className="payslip-total red"><span>控除合計</span><span>{money(row.totalDeduct)}</span></div>
+              </div>
+            </div>
+            <div className="payslip-net"><span>差引支給額</span><span className="val">{money(row.net)}</span></div>
+            <div className="payslip-footer">{companyName} — {monthText} 給与明細 — 発行日: {new Date().toLocaleDateString("ja-JP")}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const COL_COUNT = 12; // テーブルカラム数
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: 20 }}>給与明細一覧</h1>
+      <div className="page-header">
+        <h1 className="page-title">給与明細一覧</h1>
+        {detailRows.length > 0 && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Badge variant="info">{detailRows.length}名</Badge>
+            <Badge variant="default">総支給 {money(detailTotals.gross)}</Badge>
+            <Badge variant="success">差引計 {money(detailTotals.net)}</Badge>
+          </div>
+        )}
+      </div>
 
       {/* Month Selector */}
       <Card title={`対象月（${selectedFiscalYear}年度）`}>
@@ -1918,7 +2073,7 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
       {/* Detail Table */}
       <Card title={`${monthFullLabel(targetMonth)} 従業員別明細`}>
         {detailRows.length === 0 ? (
-          <div className="empty-state"><div className="empty-state-icon">📄</div>この月の明細データはありません<br/><span style={{ fontSize: 11 }}>給与計算を実行すると、ここに明細が表示されます</span></div>
+          <div className="empty-state"><div className="empty-state-icon">📄</div>この月の明細データはありません<br/><span style={{ fontSize: 11 }}>給与計算を実行して確定すると、ここに明細が表示されます</span></div>
         ) : (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
@@ -1927,74 +2082,83 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
                   ? "現在対象月 — 再計算でスナップショットを更新できます"
                   : "過去月のスナップショットを表示中"}
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={onRefreshTargetSnapshot}
-                  disabled={targetMonth !== payrollTargetMonth}
-                  title={targetMonth !== payrollTargetMonth ? "現在対象月を選択したときのみ実行できます" : ""}
-                >
-                  再計算
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => detailRows.forEach((row) => exportSlipAsPdf({ companyName, month: targetMonth, payDate: selectedHistory?.payDate || "-", row }))}>
-                  全員PDF出力
-                </button>
-              </div>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={onRefreshTargetSnapshot}
+                disabled={targetMonth !== payrollTargetMonth}
+                title={targetMonth !== payrollTargetMonth ? "現在対象月を選択したときのみ実行できます" : ""}
+              >
+                再計算
+              </button>
             </div>
             <div style={{ overflowX: "auto" }}>
-              <table className="data-table" style={{ minWidth: 1400 }}>
+              <table className="data-table" style={{ minWidth: 1100 }}>
                 <thead>
                   <tr>
-                    {colHeaders.map((h) => (
-                      <th key={h} className={h !== "従業員" && h !== "職種" && h !== "" ? "right" : ""}>{h}</th>
-                    ))}
+                    <th rowSpan={2} style={{ verticalAlign: "bottom" }}>従業員</th>
+                    <th colSpan={4} style={{ textAlign: "center", borderBottom: "1px solid #e2e8f0", background: "#f0fdf4", color: "#15803d", fontSize: 11, letterSpacing: 1 }}>支 給</th>
+                    <th colSpan={4} style={{ textAlign: "center", borderBottom: "1px solid #e2e8f0", background: "#fef2f2", color: "#dc2626", fontSize: 11, letterSpacing: 1 }}>控 除</th>
+                    <th rowSpan={2} className="right" style={{ verticalAlign: "bottom" }}>差引支給</th>
+                    <th rowSpan={2} style={{ verticalAlign: "bottom", width: 60 }}></th>
+                  </tr>
+                  <tr>
+                    <th className="right" style={{ fontSize: 11 }}>基本給</th>
+                    <th className="right" style={{ fontSize: 11 }}>残業計</th>
+                    <th className="right" style={{ fontSize: 11 }}>その他</th>
+                    <th className="right" style={{ fontSize: 11, fontWeight: 700 }}>総支給</th>
+                    <th className="right" style={{ fontSize: 11 }}>社保計</th>
+                    <th className="right" style={{ fontSize: 11 }}>税計</th>
+                    <th className="right" style={{ fontSize: 11 }}>年調</th>
+                    <th className="right" style={{ fontSize: 11, fontWeight: 700 }}>控除計</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {detailRows.map((row) => (
-                    <tr key={`${targetMonth}-${row.empId}-${row.name}`}>
-                      <td style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{row.name}</td>
-                      <td style={{ color: "#64748b", whiteSpace: "nowrap" }}>{row.jobType}</td>
-                      <td className="right mono">¥{fmt(row.basicPay || 0)}</td>
-                      <td className="right mono">¥{fmt(row.dutyAllowance || 0)}</td>
-                      <td className="right mono">¥{fmt(row.overtimePay || 0)}</td>
-                      <td className="right mono">¥{fmt(row.prescribedOvertimePay || 0)}</td>
-                      <td className="right mono">¥{fmt(row.nightOvertimePay || 0)}</td>
-                      <td className="right mono">¥{fmt(row.holidayPay || 0)}</td>
-                      <td className="right mono" style={{ fontWeight: 700 }}>¥{fmt(row.gross || 0)}</td>
-                      <td className="right mono deduction">¥{fmt(row.health || 0)}</td>
-                      <td className="right mono deduction">¥{fmt(row.kaigo || 0)}</td>
-                      <td className="right mono deduction">¥{fmt(row.pension || 0)}</td>
-                      <td className="right mono deduction">¥{fmt(row.employment || 0)}</td>
-                      <td className="right mono deduction">¥{fmt(row.incomeTax || 0)}</td>
-                      <td className="right mono deduction">¥{fmt(row.residentTax || 0)}</td>
-                      <td className="right mono deduction">¥{fmt(row.yearAdjustment || 0)}</td>
-                      <td className="right mono deduction" style={{ fontWeight: 700 }}>¥{fmt(row.totalDeduct || 0)}</td>
-                      <td className="right mono net-pay">¥{fmt(row.net || 0)}</td>
-                      <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => exportSlipAsPdf({ companyName, month: targetMonth, payDate: selectedHistory?.payDate || "-", row })}>PDF</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {detailRows.map((row) => {
+                    const otTotal = (row.overtimePay || 0) + (row.prescribedOvertimePay || 0) + (row.nightOvertimePay || 0) + (row.holidayPay || 0) + (row.otAdjust || 0);
+                    const otherPay = (row.dutyAllowance || 0) + (row.commuteAllow || 0) + (row.otherAllowance || 0) + (row.basicPayAdjust || 0);
+                    const socialIns = (row.health || 0) + (row.kaigo || 0) + (row.pension || 0) + (row.employment || 0);
+                    const taxTotal = (row.incomeTax || 0) + (row.residentTax || 0);
+                    const isOpen = payslipEmpId === row.empId;
+                    return (
+                      <React.Fragment key={`${targetMonth}-${row.empId}-${row.name}`}>
+                        <tr style={{ cursor: "pointer" }} onClick={() => setPayslipEmpId(isOpen ? null : row.empId)}>
+                          <td style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{row.name}<span style={{ fontSize: 10, color: "#94a3b8", marginLeft: 6 }}>{row.jobType}</span></td>
+                          <td className="right mono">¥{fmt(row.basicPay || 0)}</td>
+                          <td className="right mono">¥{fmt(otTotal)}</td>
+                          <td className="right mono">¥{fmt(otherPay)}</td>
+                          <td className="right mono" style={{ fontWeight: 700, color: "#15803d" }}>¥{fmt(row.gross || 0)}</td>
+                          <td className="right mono deduction">¥{fmt(socialIns)}</td>
+                          <td className="right mono deduction">¥{fmt(taxTotal)}</td>
+                          <td className="right mono deduction">¥{fmt(row.yearAdjustment || 0)}</td>
+                          <td className="right mono deduction" style={{ fontWeight: 700, color: "#dc2626" }}>¥{fmt(row.totalDeduct || 0)}</td>
+                          <td className="right mono net-pay" style={{ fontWeight: 700 }}>¥{fmt(row.net || 0)}</td>
+                          <td>
+                            <button className={`btn ${isOpen ? "btn-outline" : "btn-primary"} btn-sm`}
+                              onClick={(e) => { e.stopPropagation(); setPayslipEmpId(isOpen ? null : row.empId); }}>
+                              {isOpen ? "閉じる" : "明細"}
+                            </button>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="edit-row-expand">
+                            <td colSpan={COL_COUNT + 1} style={{ padding: 0 }}>{renderPayslip(row)}</td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                   <tr className="totals-row">
-                    <td>合計</td><td>-</td>
+                    <td style={{ fontWeight: 700 }}>合計</td>
                     <td className="right mono">¥{fmt(detailTotals.basicPay)}</td>
+                    <td className="right mono">¥{fmt(detailTotals.overtimePay + detailTotals.prescribedOvertimePay + detailTotals.nightOvertimePay + detailTotals.holidayPay)}</td>
                     <td className="right mono">¥{fmt(detailTotals.dutyAllowance)}</td>
-                    <td className="right mono">¥{fmt(detailTotals.overtimePay)}</td>
-                    <td className="right mono">¥{fmt(detailTotals.prescribedOvertimePay)}</td>
-                    <td className="right mono">¥{fmt(detailTotals.nightOvertimePay)}</td>
-                    <td className="right mono">¥{fmt(detailTotals.holidayPay)}</td>
-                    <td className="right mono" style={{ fontWeight: 700 }}>¥{fmt(detailTotals.gross)}</td>
-                    <td className="right mono deduction">¥{fmt(detailTotals.health)}</td>
-                    <td className="right mono deduction">¥{fmt(detailTotals.kaigo)}</td>
-                    <td className="right mono deduction">¥{fmt(detailTotals.pension)}</td>
-                    <td className="right mono deduction">¥{fmt(detailTotals.employment)}</td>
-                    <td className="right mono deduction">¥{fmt(detailTotals.incomeTax)}</td>
-                    <td className="right mono deduction">¥{fmt(detailTotals.residentTax)}</td>
+                    <td className="right mono" style={{ fontWeight: 700, color: "#15803d" }}>¥{fmt(detailTotals.gross)}</td>
+                    <td className="right mono deduction">¥{fmt(detailTotals.health + detailTotals.kaigo + detailTotals.pension + detailTotals.employment)}</td>
+                    <td className="right mono deduction">¥{fmt(detailTotals.incomeTax + detailTotals.residentTax)}</td>
                     <td className="right mono deduction">¥{fmt(detailTotals.yearAdjustment)}</td>
-                    <td className="right mono deduction" style={{ fontWeight: 700 }}>¥{fmt(detailTotals.totalDeduct)}</td>
-                    <td className="right mono net-pay">¥{fmt(detailTotals.net)}</td>
-                    <td>-</td>
+                    <td className="right mono deduction" style={{ fontWeight: 700, color: "#dc2626" }}>¥{fmt(detailTotals.totalDeduct)}</td>
+                    <td className="right mono net-pay" style={{ fontWeight: 700 }}>¥{fmt(detailTotals.net)}</td>
+                    <td></td>
                   </tr>
                 </tbody>
               </table>
@@ -2003,9 +2167,9 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
         )}
       </Card>
 
-      {/* MF照合チェック */}
-      <Card title={`${monthFullLabel(targetMonth)} MF照合チェック（主要項目）`}>
-        <div style={{ display: "grid", gap: 8 }}>
+      {/* MF照合チェック & CSV取込 */}
+      <Collapsible title={`MF照合チェック（${monthFullLabel(targetMonth)}）`}>
+        <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
           {mfChecks.map((check) => (
             <div key={check.label} className={`alert-box ${check.ok ? "success" : "warning"}`} style={{ marginBottom: 0 }}>
               <div style={{ fontWeight: 700 }}>{check.ok ? "✓" : "!"} {check.label}</div>
@@ -2013,7 +2177,7 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
             </div>
           ))}
         </div>
-      </Card>
+      </Collapsible>
 
       {mfCompareReport && (
         <Card title={`MF元CSV突合レポート（${monthFullLabel(mfCompareReport.month)}）`}>
@@ -2092,9 +2256,9 @@ const LeavePage = ({ employees, paidLeaveBalance, setPaidLeaveBalance }) => {
           {lowLeaveCount > 0 && <Badge variant="warning">残少 {lowLeaveCount}名</Badge>}
         </div>
       </div>
-      <Card title="残日数一覧">
+      <Card title="残日数一覧（在籍者）">
         {paidLeaveBalance.map((row) => {
-          const emp = employees.find((e) => e.id === row.empId);
+          const emp = employees.find((e) => e.id === row.empId && e.status === "在籍");
           if (!emp) return null;
           const remaining = row.granted + row.carry - row.used;
           const usedRate = Math.min(100, Math.round((row.used / (row.granted + row.carry || 1)) * 100));
@@ -2363,7 +2527,6 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [employees, setEmployees] = useState(INITIAL_EMPLOYEES);
   const [attendance, setAttendance] = useState(INITIAL_ATTENDANCE);
-  const [confirmDialog, setConfirmDialog] = useState(null);
   const [monthlyHistory, setMonthlyHistory] = useState(() =>
     upsertMonthHistory(INITIAL_MONTHLY_HISTORY, CURRENT_PROCESSING_MONTH, { payDate: defaultPayDateStringByMonth(CURRENT_PROCESSING_MONTH, INITIAL_MASTER_SETTINGS.paymentDay), gross: 0, net: 0, confirmedBy: "-", status: "未計算" })
   );
@@ -2417,14 +2580,20 @@ export default function App() {
             attendanceData.forEach(att => {
               const empId = String(att.employeeId);
               attendanceObj[empId] = {
+                ...EMPTY_ATTENDANCE,
                 workDays: att.workDays || 0,
                 legalOT: att.overtimeHours || 0,
-                prescribedOT: 0,
                 nightOT: att.lateNightHours || 0,
-                holidayOT: 0
               };
             });
             attendanceData = attendanceObj;
+          } else {
+            // 旧オブジェクト形式に不足フィールドがあればEMPTY_ATTENDANCEのデフォルトをマージ
+            const migrated = {};
+            for (const [empId, att] of Object.entries(attendanceData)) {
+              migrated[empId] = { ...EMPTY_ATTENDANCE, ...att };
+            }
+            attendanceData = migrated;
           }
           setAttendance(attendanceData);
           const mergedSettings = { ...INITIAL_MASTER_SETTINGS, ...(saved.settings || {}) };
@@ -2470,13 +2639,11 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [isStateHydrated, page, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
 
-  const makeCurrentResults = () => employees.filter((e) => e.status === "在籍").map((emp) => ({ emp, result: calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings) }));
-
   const onConfirmPayroll = (results) => {
     const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
     const totalNet = results.reduce((s, r) => s + r.result.netPay, 0);
     setMonthlyHistory((prev) => upsertMonthHistory(prev, payrollTargetMonth, { payDate: payrollTargetPayDate, gross: totalGross, net: totalNet, confirmedBy: "管理者", status: "確定" }));
-    setMonthlySnapshots((prev) => ({ ...prev, [payrollTargetMonth]: results.map(({ emp, result }) => toSnapshotRowFromCalc(emp, result)) }));
+    setMonthlySnapshots((prev) => ({ ...prev, [payrollTargetMonth]: results.map((r) => toSnapshotRowFromCalc(r.emp, r.result, r.att || attendance[r.emp.id] || EMPTY_ATTENDANCE)) }));
     setCalcStatus("手動確定完了");
     setIsAttendanceDirty(false);
     setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "確定", text: `${monthFullLabel(payrollTargetMonth)} を手動確定` }, ...prev].slice(0, 30));
@@ -2521,12 +2688,19 @@ export default function App() {
           }
 
           // オブジェクト形式で保存（calcPayrollで使用される形式に合わせる）
+          const prevAtt = updated[empId] || {};
           updated[empId] = {
             workDays: parseFloat(hrmosRecord.workDays) || 0,
-            legalOT: parseFloat(hrmosRecord.overtimeHours) || 0, // HRMOSの残業時間を法定外残業として扱う
-            prescribedOT: parseFloat(hrmosRecord.prescribedHours) || 0, // 法定内残業（所定外時間）
+            scheduledDays: prevAtt.scheduledDays || 0,
+            workHours: parseFloat(hrmosRecord.totalWorkHours) || 0,
+            scheduledHours: prevAtt.scheduledHours || 0,
+            legalOT: parseFloat(hrmosRecord.overtimeHours) || 0,
+            prescribedOT: parseFloat(hrmosRecord.prescribedHours) || 0,
             nightOT: parseFloat(hrmosRecord.lateNightHours) || 0,
-            holidayOT: parseFloat(hrmosRecord.holidayHours) || 0, // 休日労働時間
+            holidayOT: parseFloat(hrmosRecord.holidayHours) || 0,
+            otAdjust: prevAtt.otAdjust || 0,
+            basicPayAdjust: prevAtt.basicPayAdjust || 0,
+            otherAllowance: prevAtt.otherAllowance || 0,
             hrmosSync: true,
             syncedAt: data.syncedAt
           };
@@ -2618,7 +2792,7 @@ export default function App() {
       }, 0);
 
       setMonthlyHistory((prev) => upsertMonthHistory(prev, payrollTargetMonth, { payDate: payrollTargetPayDate, gross: totalGross, net: totalNet, status: "計算済", confirmedBy: "-" }));
-      setMonthlySnapshots((prev) => ({ ...prev, [payrollTargetMonth]: results.map(({ emp, result }) => toSnapshotRowFromCalc(emp, result)) }));
+      setMonthlySnapshots((prev) => ({ ...prev, [payrollTargetMonth]: results.map(({ emp, result }) => { const a2 = att[emp.id] || EMPTY_ATTENDANCE; return toSnapshotRowFromCalc(emp, result, a2); }) }));
       setIsAttendanceDirty(false);
       setCalcStatus(`${monthFullLabel(payrollTargetMonth)} 自動計算完了`);
       setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "計算", text: `${monthFullLabel(payrollTargetMonth)} を自動計算（残業${totalOT.toFixed(1)}h）` }, ...prev].slice(0, 30));
@@ -2644,7 +2818,6 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <Nav page={page} setPage={setPage} />
       <main className="app-main">
         {/* Compact Status Bar */}
