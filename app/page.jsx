@@ -486,7 +486,8 @@ const getUpcomingReminders = () => {
 };
 
 // ===== Insights generator =====
-const buildInsights = (employees, attendance, prevMonthHistory, settings) => {
+const buildInsights = (employees, attendance, prevMonthHistory, settings, payrollMonth) => {
+  const txYear = taxYearFromPayMonth(payrollMonth);
   const insights = [];
   const active = employees.filter((e) => e.status === "在籍");
   const warnH = Number(settings.overtimeWarningHours) || 45;
@@ -504,7 +505,7 @@ const buildInsights = (employees, attendance, prevMonthHistory, settings) => {
   });
 
   if (prevMonthHistory && prevMonthHistory.gross > 0) {
-    const currentResults = active.map((emp) => calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings));
+    const currentResults = active.map((emp) => calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings, { taxYear: txYear }));
     const currentGross = currentResults.reduce((s, r) => s + r.gross, 0);
     const diff = currentGross - prevMonthHistory.gross;
     const pct = Math.round((diff / prevMonthHistory.gross) * 100);
@@ -514,7 +515,7 @@ const buildInsights = (employees, attendance, prevMonthHistory, settings) => {
   }
 
   active.forEach((emp) => {
-    const result = calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings);
+    const result = calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings, { taxYear: txYear });
     if (emp.stdMonthly > 0 && Math.abs(result.gross - emp.stdMonthly) / emp.stdMonthly > 0.2) {
       insights.push({ type: "info", text: `${emp.name}: 実際の総支給（¥${fmt(result.gross)}）と標準報酬月額（¥${fmt(emp.stdMonthly)}）の差が20%超。算定基礎届の時期に等級変更を検討してください。` });
     }
@@ -527,7 +528,7 @@ const buildInsights = (employees, attendance, prevMonthHistory, settings) => {
   // 注: gross - net には社保以外（所得税・住民税）も含まれるため概算チェック。
   // 大きな差（10%以上）がある場合のみ警告して誤検知を減らす。
   if (prevMonthHistory && prevMonthHistory.status === "確定" && prevMonthHistory.gross > 0) {
-    const currentResults = active.map((emp) => calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings));
+    const currentResults = active.map((emp) => calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings, { taxYear: txYear }));
     const currentTotalDeduct = currentResults.reduce((s, r) => s + r.totalDeduct, 0);
     const savedTotalDeduct = prevMonthHistory.gross - prevMonthHistory.net;
     if (savedTotalDeduct > 0 && Math.abs(currentTotalDeduct - savedTotalDeduct) / savedTotalDeduct > 0.1) {
@@ -619,7 +620,8 @@ const Collapsible = ({ title, defaultOpen = false, children }) => {
 // ===== DashboardPage =====
 const DashboardPage = ({ employees, attendance, payrollMonth, payrollPayDate, payrollStatus, isAttendanceDirty, monthlyHistory, settings, setPage }) => {
   const active = employees.filter((e) => e.status === "在籍");
-  const results = active.map((emp) => ({ emp, result: calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings) }));
+  const txYear = taxYearFromPayMonth(payrollMonth);
+  const results = active.map((emp) => ({ emp, result: calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings, { taxYear: txYear }) }));
   const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
   const totalNet = results.reduce((s, r) => s + r.result.netPay, 0);
 
@@ -632,7 +634,7 @@ const DashboardPage = ({ employees, attendance, payrollMonth, payrollPayDate, pa
   const netDiff = prevConfirmed ? totalNet - prevConfirmed.net : 0;
 
   const reminders = getUpcomingReminders();
-  const insights = buildInsights(employees, attendance, prevConfirmed, settings);
+  const insights = buildInsights(employees, attendance, prevConfirmed, settings, payrollMonth);
 
   const effectiveStatus = isAttendanceDirty ? "計算中" : payrollStatus;
   const steps = [
@@ -733,12 +735,13 @@ const PayrollPage = ({
     onAttendanceChange();
   };
   const rates = buildRates(settings);
+  const txYear = taxYearFromPayMonth(payrollMonth);
   const results = useMemo(
     () => employees.filter((e) => e.status === "在籍").map((emp) => ({
       emp, att: attendance[emp.id] || EMPTY_ATTENDANCE,
-      result: calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings),
+      result: calcPayroll(emp, attendance[emp.id] || EMPTY_ATTENDANCE, settings, { taxYear: txYear }),
     })),
-    [attendance, employees, settings]
+    [attendance, employees, settings, txYear]
   );
   const hasCriticalChecks = monthlyChecks.critical.length > 0;
   const titleStatus = isAttendanceDirty ? "計算中" : payrollStatus;
@@ -1702,7 +1705,7 @@ const HistoryPage = ({ employees, attendance, monthlyHistory, monthlySnapshots, 
     if (month === CURRENT_PROCESSING_MONTH) {
       return employees
         .filter((e) => e.status === "在籍")
-        .map((emp) => { const a = attendance[emp.id] || EMPTY_ATTENDANCE; return toSnapshotRowFromCalc(emp, calcPayroll(emp, a, settings), a); });
+        .map((emp) => { const a = attendance[emp.id] || EMPTY_ATTENDANCE; return toSnapshotRowFromCalc(emp, calcPayroll(emp, a, settings, { taxYear: taxYearFromPayMonth(month) }), a); });
     }
     return [];
   };
@@ -3249,9 +3252,10 @@ export default function App() {
     try {
       const att = attendanceOverride || attendance;
       const active = employees.filter((e) => e.status === "在籍");
+      const txYear = taxYearFromPayMonth(payrollTargetMonth);
       const results = active.map((emp) => ({
         emp,
-        result: calcPayroll(emp, att[emp.id] || EMPTY_ATTENDANCE, settings),
+        result: calcPayroll(emp, att[emp.id] || EMPTY_ATTENDANCE, settings, { taxYear: txYear }),
       }));
 
       const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
