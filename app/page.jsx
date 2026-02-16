@@ -2029,17 +2029,206 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
 
   const COL_COUNT = 12; // テーブルカラム数
 
+  // ---- Excel 給与台帳エクスポート ----
+  const exportExcel = async () => {
+    if (detailRows.length === 0) return;
+    const XLSX = (await import("xlsx")).default || (await import("xlsx"));
+    const monthText = monthFullLabel(targetMonth);
+    const payDateText = selectedHistory?.payDate || "";
+
+    // ヘッダー行
+    const headers = [
+      "従業員名", "部署", "雇用区分", "職種",
+      "出勤日数", "所定労働日数", "出勤時間", "所定労働時間",
+      "法定外残業(h)", "所定外残業(h)", "深夜残業(h)", "休日労働(h)",
+      "基本給", "基本給調整", "職務手当", "通勤手当",
+      "時間外手当", "法定内残業手当", "深夜残業手当", "休日手当",
+      "残業手当調整", "その他手当", "総支給額",
+      "健康保険料", "介護保険料", "厚生年金", "雇用保険料",
+      "社会保険料計", "所得税", "住民税", "年末調整", "控除合計",
+      "差引支給額",
+    ];
+
+    const dataRows = detailRows.map((row) => [
+      row.name, row.dept || "", row.employmentType || "", row.jobType || "",
+      row.workDays || 0, row.scheduledDays || 0, row.workHours || 0, row.scheduledHours || 0,
+      row.legalOT || 0, row.prescribedOT || 0, row.nightOT || 0, row.holidayOT || 0,
+      row.basicPay || 0, row.basicPayAdjust || 0, row.dutyAllowance || 0, row.commuteAllow || 0,
+      row.overtimePay || 0, row.prescribedOvertimePay || 0, row.nightOvertimePay || 0, row.holidayPay || 0,
+      row.otAdjust || 0, row.otherAllowance || 0, row.gross || 0,
+      row.health || 0, row.kaigo || 0, row.pension || 0, row.employment || 0,
+      (row.health || 0) + (row.kaigo || 0) + (row.pension || 0) + (row.employment || 0),
+      row.incomeTax || 0, row.residentTax || 0, row.yearAdjustment || 0, row.totalDeduct || 0,
+      row.net || 0,
+    ]);
+
+    // 合計行
+    const totalsRow = ["合計", "", "", "",
+      detailRows.reduce((s, r) => s + (r.workDays || 0), 0),
+      "", "", "",
+      detailRows.reduce((s, r) => s + (r.legalOT || 0), 0),
+      detailRows.reduce((s, r) => s + (r.prescribedOT || 0), 0),
+      detailRows.reduce((s, r) => s + (r.nightOT || 0), 0),
+      detailRows.reduce((s, r) => s + (r.holidayOT || 0), 0),
+      detailTotals.basicPay, 0, detailTotals.dutyAllowance, 0,
+      detailTotals.overtimePay, detailTotals.prescribedOvertimePay,
+      detailTotals.nightOvertimePay, detailTotals.holidayPay,
+      0, 0, detailTotals.gross,
+      detailTotals.health, detailTotals.kaigo, detailTotals.pension, detailTotals.employment,
+      detailTotals.health + detailTotals.kaigo + detailTotals.pension + detailTotals.employment,
+      detailTotals.incomeTax, detailTotals.residentTax, detailTotals.yearAdjustment, detailTotals.totalDeduct,
+      detailTotals.net,
+    ];
+
+    // タイトル行
+    const titleRows = [
+      [`${companyName || "きょうしん輸送"} 給与台帳`],
+      [`対象月: ${monthText}`, "", `支給日: ${payDateText ? formatDateJP(payDateText) : "-"}`, "", `出力日: ${new Date().toLocaleDateString("ja-JP")}`],
+      [],
+    ];
+
+    const allRows = [...titleRows, headers, ...dataRows, [], totalsRow];
+
+    const ws = XLSX.utils.aoa_to_sheet(allRows);
+
+    // 列幅の設定
+    ws["!cols"] = [
+      { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+      { wch: 8 }, { wch: 10 }, { wch: 8 }, { wch: 10 },
+      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+      { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
+      { wch: 12 }, { wch: 10 }, { wch: 14 },
+      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+      { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
+      { wch: 14 },
+    ];
+
+    // 金額列に数値フォーマットを適用（12列目以降）
+    const numFmt = "#,##0";
+    const rowStart = titleRows.length + 1; // 0-indexed but aoa_to_sheet uses 0-indexed internally
+    for (let ri = rowStart; ri < allRows.length; ri++) {
+      for (let ci = 12; ci < headers.length; ci++) {
+        const cellRef = XLSX.utils.encode_cell({ r: ri, c: ci });
+        if (ws[cellRef] && typeof ws[cellRef].v === "number") {
+          ws[cellRef].z = numFmt;
+        }
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "給与台帳");
+    XLSX.writeFile(wb, `給与台帳_${targetMonth}.xlsx`);
+  };
+
+  // ---- PDF 全員一括出力 ----
+  const exportAllPayslipsPdf = () => {
+    if (detailRows.length === 0) return;
+    const monthText = monthFullLabel(targetMonth);
+    const payDateText = formatDateJP(selectedHistory?.payDate || "-");
+
+    const renderOnePayslip = (row) => {
+      const socialTotal = (row.health || 0) + (row.kaigo || 0) + (row.pension || 0) + (row.employment || 0);
+      return `<div class="payslip" style="page-break-after:always;">
+<div class="payslip-header"><h2>給 与 明 細 書</h2><div style="font-size:12px;text-align:right"><div>${companyName || ""}</div></div></div>
+<div class="payslip-meta">
+<div class="payslip-meta-item"><span class="label">対象期間</span><span class="val">${monthText}</span></div>
+<div class="payslip-meta-item"><span class="label">支給日</span><span class="val">${payDateText}</span></div>
+<div class="payslip-meta-item"><span class="label">氏名</span><span class="val">${row.name}</span></div>
+</div>
+<div class="payslip-body">
+<div class="payslip-col">
+<div class="payslip-section-title">勤 怠</div>
+<div class="payslip-row"><span class="lbl">出勤日数</span><span class="amt">${row.workDays || "-"} 日</span></div>
+<div class="payslip-row"><span class="lbl">所定労働日数</span><span class="amt">${row.scheduledDays || "-"} 日</span></div>
+<div class="payslip-row"><span class="lbl">出勤時間</span><span class="amt">${row.workHours || "-"} h</span></div>
+<div class="payslip-row"><span class="lbl">所定労働時間</span><span class="amt">${row.scheduledHours || "-"} h</span></div>
+<div class="payslip-row"><span class="lbl">時間外労働</span><span class="amt">${row.legalOT || "-"} h</span></div>
+<div class="payslip-row"><span class="lbl">深夜労働</span><span class="amt">${row.nightOT || "-"} h</span></div>
+<div class="payslip-row"><span class="lbl">休日労働</span><span class="amt">${row.holidayOT || "-"} h</span></div>
+<div class="payslip-section-title">支 給</div>
+<div class="payslip-row"><span class="lbl">基本給</span><span class="amt">${money(row.basicPay)}</span></div>
+${(row.basicPayAdjust || 0) !== 0 ? `<div class="payslip-row sub"><span class="lbl">基本給調整</span><span class="amt">${money(row.basicPayAdjust)}</span></div>` : ""}
+<div class="payslip-row"><span class="lbl">職務手当</span><span class="amt">${money(row.dutyAllowance)}</span></div>
+<div class="payslip-row"><span class="lbl">通勤手当</span><span class="amt">${money(row.commuteAllow || 0)}</span></div>
+<div class="payslip-row"><span class="lbl">時間外手当</span><span class="amt">${money(row.overtimePay)}</span></div>
+${(row.prescribedOvertimePay || 0) > 0 ? `<div class="payslip-row sub"><span class="lbl">所定外残業手当</span><span class="amt">${money(row.prescribedOvertimePay)}</span></div>` : ""}
+${(row.nightOvertimePay || 0) > 0 ? `<div class="payslip-row sub"><span class="lbl">深夜残業手当</span><span class="amt">${money(row.nightOvertimePay)}</span></div>` : ""}
+${(row.holidayPay || 0) > 0 ? `<div class="payslip-row sub"><span class="lbl">休日労働手当</span><span class="amt">${money(row.holidayPay)}</span></div>` : ""}
+${(row.otAdjust || 0) !== 0 ? `<div class="payslip-row sub"><span class="lbl">残業手当調整</span><span class="amt">${money(row.otAdjust)}</span></div>` : ""}
+${(row.otherAllowance || 0) !== 0 ? `<div class="payslip-row"><span class="lbl">その他手当</span><span class="amt">${money(row.otherAllowance)}</span></div>` : ""}
+<div class="payslip-total green"><span>支給合計</span><span>${money(row.gross)}</span></div>
+</div>
+<div class="payslip-col">
+<div class="payslip-section-title">控 除</div>
+<div class="payslip-row"><span class="lbl">健康保険料</span><span class="amt">${money(row.health)}</span></div>
+<div class="payslip-row"><span class="lbl">介護保険料</span><span class="amt">${money(row.kaigo)}</span></div>
+<div class="payslip-row"><span class="lbl">厚生年金保険料</span><span class="amt">${money(row.pension)}</span></div>
+<div class="payslip-row"><span class="lbl">雇用保険料</span><span class="amt">${money(row.employment)}</span></div>
+<div class="payslip-total red" style="border-top:1px solid #fca5a5"><span>社会保険料計</span><span>${money(socialTotal)}</span></div>
+<div class="payslip-row" style="margin-top:4px"><span class="lbl">所得税</span><span class="amt">${money(row.incomeTax)}</span></div>
+<div class="payslip-row"><span class="lbl">住民税</span><span class="amt">${money(row.residentTax)}</span></div>
+${(row.yearAdjustment || 0) !== 0 ? `<div class="payslip-row"><span class="lbl">年末調整過不足</span><span class="amt">${money(row.yearAdjustment)}</span></div>` : ""}
+<div class="payslip-total red"><span>控除合計</span><span>${money(row.totalDeduct)}</span></div>
+</div>
+</div>
+<div class="payslip-net"><span>差引支給額</span><span class="val">${money(row.net)}</span></div>
+<div class="payslip-footer">${companyName || ""} — ${monthText} 給与明細 — 発行日: ${new Date().toLocaleDateString("ja-JP")}</div>
+</div>`;
+    };
+
+    const win = window.open("", "_blank", "width=900,height=1100");
+    if (!win) return;
+    win.document.open();
+    win.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${monthText}_全従業員_給与明細</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px;font-size:12px}
+.payslip{max-width:800px;margin:0 auto 32px;border:2px solid #1e293b;padding:0}
+.payslip-header{background:#1e293b;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+.payslip-header h2{font-size:18px;letter-spacing:2px}
+.payslip-meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #e2e8f0}
+.payslip-meta-item{padding:8px 16px;border-right:1px solid #e2e8f0;font-size:12px}
+.payslip-meta-item:last-child{border-right:none}
+.payslip-meta-item .label{color:#64748b;font-size:10px;display:block}
+.payslip-meta-item .val{font-weight:700;font-size:13px}
+.payslip-body{display:grid;grid-template-columns:1fr 1fr;min-height:0}
+.payslip-col{border-right:1px solid #e2e8f0}
+.payslip-col:last-child{border-right:none}
+.payslip-section-title{background:#f1f5f9;padding:6px 12px;font-weight:700;font-size:11px;color:#334155;border-bottom:1px solid #e2e8f0;border-top:1px solid #e2e8f0;letter-spacing:1px}
+.payslip-row{display:flex;justify-content:space-between;padding:5px 12px;border-bottom:1px solid #f1f5f9;font-size:12px}
+.payslip-row .lbl{color:#475569}
+.payslip-row .amt{font-family:ui-monospace,monospace;font-weight:500;text-align:right}
+.payslip-row.sub{background:#f8fafc}
+.payslip-total{display:flex;justify-content:space-between;padding:8px 12px;font-weight:700;font-size:13px;border-top:2px solid #cbd5e1}
+.payslip-total.green{background:#f0fdf4;color:#15803d}
+.payslip-total.red{background:#fef2f2;color:#dc2626}
+.payslip-net{background:#1e293b;color:#fff;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;font-size:16px}
+.payslip-net .val{font-family:ui-monospace,monospace;font-size:22px;font-weight:700}
+.payslip-footer{padding:8px 16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;text-align:right}
+@media print{body{padding:0}.payslip{border-width:1px;margin-bottom:0}}
+</style></head><body>`);
+    detailRows.forEach((row) => { win.document.write(renderOnePayslip(row)); });
+    win.document.write(`</body></html>`);
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  };
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">給与明細一覧</h1>
-        {detailRows.length > 0 && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Badge variant="info">{detailRows.length}名</Badge>
-            <Badge variant="default">総支給 {money(detailTotals.gross)}</Badge>
-            <Badge variant="success">差引計 {money(detailTotals.net)}</Badge>
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {detailRows.length > 0 && (
+            <>
+              <Badge variant="info">{detailRows.length}名</Badge>
+              <Badge variant="default">総支給 {money(detailTotals.gross)}</Badge>
+              <Badge variant="success">差引計 {money(detailTotals.net)}</Badge>
+              <button className="btn btn-secondary btn-sm" onClick={exportExcel} title="給与台帳をExcel形式でダウンロード">Excel出力</button>
+              <button className="btn btn-secondary btn-sm" onClick={exportAllPayslipsPdf} title="全従業員の給与明細を一括PDF出力">全員PDF出力</button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Month Selector */}
