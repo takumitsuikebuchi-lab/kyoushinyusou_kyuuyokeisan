@@ -136,6 +136,20 @@ body {
   font-family: var(--mono);
 }
 
+.nav-user {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.nav-user-email {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
 /* ===== Status Bar ===== */
 .status-bar {
   display: flex;

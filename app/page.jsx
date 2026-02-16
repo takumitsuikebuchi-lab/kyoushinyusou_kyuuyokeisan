@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase-client";
 
 // ===== 検証済み計算ロジック =====
 const ceil = (v) => Math.ceil(v);
@@ -739,7 +740,7 @@ const buildInsights = (employees, attendance, prevMonthHistory, settings) => {
 };
 
 // ===== Nav =====
-const Nav = ({ page, setPage }) => {
+const Nav = ({ page, setPage, userEmail }) => {
   const items = [
     { id: "dashboard", icon: <IconHome />, label: "ダッシュボード" },
     { id: "payroll", icon: <IconCalc />, label: "月次給与計算" },
@@ -748,6 +749,11 @@ const Nav = ({ page, setPage }) => {
     { id: "leave", icon: <IconCalendar />, label: "有給管理" },
     { id: "settings", icon: <IconSettings />, label: "マスタ設定" },
   ];
+  const handleLogout = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
   return (
     <nav className="nav">
       <div className="nav-brand">
@@ -762,7 +768,16 @@ const Nav = ({ page, setPage }) => {
           </button>
         ))}
       </div>
-      <div className="nav-footer">v3.1</div>
+      {userEmail && (
+        <div className="nav-user">
+          <div className="nav-user-email" title={userEmail}>{userEmail}</div>
+          <button onClick={handleLogout} className="nav-btn" style={{ fontSize: 12, opacity: 0.8 }}>
+            <span className="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
+            <span>ログアウト</span>
+          </button>
+        </div>
+      )}
+      <div className="nav-footer">v3.2</div>
     </nav>
   );
 };
@@ -2959,6 +2974,16 @@ export default function App() {
   const [changeLogs, setChangeLogs] = useState([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
   const [saveStatus, setSaveStatus] = useState("読込中");
+  const [userEmail, setUserEmail] = useState("");
+
+  // Fetch logged-in user email
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) setUserEmail(user.email);
+    });
+  }, []);
 
   const sortedMonthlyHistory = useMemo(() => [...monthlyHistory].sort((a, b) => a.month.localeCompare(b.month)), [monthlyHistory]);
   const oldestUnconfirmed = sortedMonthlyHistory.find((m) => m.status !== "確定");
@@ -3292,7 +3317,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <Nav page={page} setPage={setPage} />
+      <Nav page={page} setPage={setPage} userEmail={userEmail} />
       <main className="app-main">
         {/* Compact Status Bar */}
         <div className="status-bar">
