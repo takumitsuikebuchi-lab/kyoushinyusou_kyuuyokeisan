@@ -1337,24 +1337,142 @@ input[type="number"] {
 }
 
 /* ===== Responsive ===== */
+
+/* --- Tablet (max 960px) --- */
 @media (max-width: 960px) {
   .nav { width: 180px; }
   .detail-panel { grid-template-columns: 1fr; }
   .emp-row { grid-template-columns: 1fr; gap: 6px; }
   .workflow-card { flex-direction: column; align-items: flex-start; }
+  .payslip-body { grid-template-columns: 1fr; }
+  .payslip-col { border-right: none; border-bottom: 1px solid var(--line); }
+  .payslip-col:last-child { border-bottom: none; }
+  .settings-summary-bar { flex-wrap: wrap; gap: 8px 16px; }
 }
 
+/* --- Mobile (max 720px) --- */
 @media (max-width: 720px) {
+  :root { --nav-width: 0px; }
+
+  .app-layout { flex-direction: column; }
+
   .nav {
-    width: 60px;
+    width: 100%;
+    min-height: auto;
+    height: auto;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    z-index: 1000;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
   }
-  .nav-brand-main, .nav-btn span:not(.nav-icon) { display: none; }
-  .nav-btn { justify-content: center; padding: 12px; }
-  .app-main { padding: 16px; }
+
+  .nav-brand { display: none; }
+  .nav-footer { display: none; }
+  .nav-user { display: none; }
+
+  .nav-items {
+    display: flex;
+    flex-direction: row;
+    padding: 0;
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .nav-btn {
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 6px;
+    font-size: 9px;
+    border-left: none;
+    border-top: 2px solid transparent;
+    min-width: 56px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .nav-btn.active {
+    border-left-color: transparent;
+    border-top-color: #60a5fa;
+  }
+
+  .nav-btn svg { width: 20px; height: 20px; }
+
+  .app-main {
+    padding: 12px 12px 80px; /* bottom padding for fixed nav */
+    overflow-x: auto;
+  }
+
   .page-header { flex-direction: column; align-items: flex-start; }
+  .page-title { font-size: 18px; }
+
+  .status-bar { font-size: 11px; gap: 6px; padding: 8px 10px; }
+
   .form-grid { grid-template-columns: 1fr; }
   .form-row-2col { grid-template-columns: 1fr; }
+
   .kpi-row { grid-template-columns: 1fr 1fr; }
+  .kpi-item-value { font-size: 18px; }
+
   .dash-steps { grid-template-columns: 1fr; }
+
   .leave-edit { grid-template-columns: repeat(2, 1fr); }
+
+  .card { padding: 14px; }
+  .card-title { font-size: 12px; }
+
+  .badge { font-size: 10px; padding: 3px 8px; }
+
+  /* Tables: horizontal scroll wrapper */
+  .data-table { font-size: 11px; }
+  .data-table th, .data-table td { padding: 7px 8px; white-space: nowrap; }
+
+  .payslip-meta { grid-template-columns: 1fr; }
+  .payslip-meta-item { border-right: none; border-bottom: 1px solid var(--line); }
+  .payslip-meta-item:last-child { border-bottom: none; }
+  .payslip-header h2 { font-size: 14px; letter-spacing: 1px; }
+  .payslip-net { font-size: 14px; }
+  .payslip-net .val { font-size: 18px; }
+
+  .countdown { font-size: 24px; }
+
+  .month-pills { gap: 4px; }
+  .month-pill { padding: 4px 8px; font-size: 10px; }
+
+  .tabs { flex-wrap: wrap; }
+  .tab-btn { padding: 5px 10px; font-size: 11px; }
+
+  .settings-tabs { flex-wrap: wrap; }
+  .settings-tab { padding: 8px 12px; font-size: 12px; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .settings-grid-3 { grid-template-columns: 1fr; }
+  .settings-grid-4 { grid-template-columns: 1fr 1fr; }
+  .month-days-grid { grid-template-columns: repeat(3, 1fr); }
+
+  .inline-edit-panel { padding: 12px; }
+  .inline-edit-panel .form-grid { grid-template-columns: 1fr; }
+
+  .reminder-item { flex-wrap: wrap; }
+  .reminder-date { min-width: auto; }
+}
+
+/* --- Small Mobile (max 480px) --- */
+@media (max-width: 480px) {
+  .app-main { padding: 8px 8px 76px; }
+  .kpi-row { grid-template-columns: 1fr; }
+  .kpi-item { padding: 10px; }
+  .kpi-item-value { font-size: 16px; }
+  .settings-grid-4 { grid-template-columns: 1fr; }
+  .month-days-grid { grid-template-columns: repeat(2, 1fr); }
+  .payslip-row { font-size: 11px; }
+  .detail-row { font-size: 12px; }
+  .emp-actions { flex-wrap: wrap; }
+  .workflow-card-actions { width: 100%; }
+  .workflow-card-actions .btn { flex: 1; justify-content: center; }
 }

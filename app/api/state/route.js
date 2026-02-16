@@ -85,6 +85,45 @@ const writeStateToSupabase = async (state) => {
   }
 };
 
+/**
+ * Fire-and-forget audit log write to Supabase.
+ */
+const writeAuditLog = async (userEmail, action, detail) => {
+  if (!hasSupabaseConfig) return;
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/audit_log`;
+    await fetch(url, {
+      method: "POST",
+      headers: supabaseHeaders({ Prefer: "return=minimal" }),
+      body: JSON.stringify({ user_email: userEmail, action, detail }),
+      cache: "no-store",
+    });
+  } catch {
+    // Silently ignore — audit should never block operations
+  }
+};
+
+/**
+ * Read the current updatedAt timestamp from the active storage.
+ * Used for optimistic locking: compare before writing.
+ */
+const getCurrentUpdatedAt = async () => {
+  if (hasSupabaseConfig) {
+    try {
+      const state = await readStateFromSupabase();
+      return state?.updatedAt || null;
+    } catch {
+      // fallback to file
+    }
+  }
+  try {
+    const state = await readStateFile();
+    return state?.updatedAt || null;
+  } catch {
+    return null;
+  }
+};
+
 export async function GET() {
   try {
     if (hasSupabaseConfig) {
@@ -132,6 +171,29 @@ export async function PUT(req) {
       );
     }
 
+    // --- Optimistic locking ---
+    // Client sends _expectedUpdatedAt to detect concurrent writes.
+    // If the stored updatedAt differs, another user saved in the meantime → 409.
+    const expectedUpdatedAt = body._expectedUpdatedAt || null;
+    const userEmail = body._userEmail || null;
+    delete body._expectedUpdatedAt; // Don't persist the meta field
+    delete body._userEmail;
+
+    if (expectedUpdatedAt) {
+      const currentUpdatedAt = await getCurrentUpdatedAt();
+      if (currentUpdatedAt && currentUpdatedAt !== expectedUpdatedAt) {
+        return NextResponse.json(
+          {
+            ok: false,
+            conflict: true,
+            message: "他のユーザーがデータを更新しました。最新データを取得してください。",
+            serverUpdatedAt: currentUpdatedAt,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const state = {
       version: STATE_VERSION,
       updatedAt: new Date().toISOString(),
@@ -143,6 +205,8 @@ export async function PUT(req) {
         await writeStateToSupabase(state);
         // Keep a local backup file to simplify emergency recovery (may fail on read-only filesystems like Vercel).
         try { await writeStateFile(state); } catch { /* ignore on cloud */ }
+        // Fire-and-forget: audit log
+        writeAuditLog(userEmail, "save", "自動保存").catch(() => {});
         return NextResponse.json({ ok: true, source: "supabase", updatedAt: state.updatedAt });
       } catch (error) {
         console.error("[state][PUT] supabase write error:", error);
