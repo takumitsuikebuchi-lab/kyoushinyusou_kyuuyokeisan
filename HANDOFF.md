@@ -2,7 +2,7 @@
 
 > **最終更新**: 2026-02-17
 > **最終更新者**: Claude Code
-> **最終コミット**: `(本コミット)` fix: taxYearFromPayMonth を全 calcPayroll 呼出に接続（課題C完了）
+> **最終コミット**: `7845604` fix: taxYearFromPayMonth を全 calcPayroll 呼出に接続（課題C完了）
 > **ステータス**: 課題C完了。taxYear実接続により2025年支給→R7表、2026年支給→R8表が正しく適用。次は (D) 賞与UI → (E) 年末調整UI → (F) page.jsx分割。
 
 ---
@@ -55,7 +55,7 @@
 ## 0. クイックステータス（最短把握）
 
 - 現在ブランチ: `main`
-- 最新コミット: `(本コミット)` fix: taxYearFromPayMonth を全 calcPayroll 呼出に接続（課題C完了）
+- 最新コミット: `7845604` fix: taxYearFromPayMonth を全 calcPayroll 呼出に接続（課題C完了）
 - 次に着手する課題: (D) 賞与計算UI → (E) 年末調整UI → (F) page.jsx分割
 - プレビューURL: `http://localhost:3000`
 - 検証結果: `npm run build` 成功（Next.js 15.5.12）。`npm audit` 脆弱性0件。Middleware 81.9 kB。
