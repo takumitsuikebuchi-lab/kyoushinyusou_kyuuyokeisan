@@ -1248,7 +1248,7 @@ const PayrollPage = ({
             </label>
             <label className="form-label">
               API Key (Secret Key)
-              <input value={hrmosSettings.apiKey} onChange={(e) => updateHrmos("apiKey", e.target.value)} placeholder="HRMOS管理画面から取得" />
+              <input type="password" value={hrmosSettings.apiKey} onChange={(e) => updateHrmos("apiKey", e.target.value)} placeholder="HRMOS管理画面から取得" autoComplete="off" />
             </label>
             <label className="form-label">
               Client ID
@@ -1597,7 +1597,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
       note: `新規追加 (${new Date().toLocaleDateString("ja-JP")})`,
     };
     setEmployees((prev) => [...prev, newEmployee]);
-    setAttendance((prev) => ({ ...prev, [nextId]: { workDays: 0, legalOT: 0, prescribedOT: 0, nightOT: 0, holidayOT: 0 } }));
+    setAttendance((prev) => ({ ...prev, [nextId]: { ...EMPTY_ATTENDANCE } }));
     setPaidLeaveBalance((prev) => [...prev, { empId: nextId, granted: 10, used: 0, carry: 0 }]);
     setNewName(""); setNewHrmosEmployeeNumber(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0");
     setOnboardingMessage(`${newEmployee.name} を登録しました`);
@@ -2302,7 +2302,7 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
     const exportDate = new Date().toLocaleDateString("ja-JP");
     const cn = companyName || "きょうしん輸送";
 
-    const fmt = (v) => (v == null || v === 0) ? "" : Number(v).toLocaleString("ja-JP");
+    const fmtCell = (v) => (v == null || v === 0) ? "" : Number(v).toLocaleString("ja-JP");
     const fmtH = (v) => (v == null || v === 0) ? "" : String(v);
 
     // カテゴリ別ヘッダー（2段組み: グループ行 + 項目行）
@@ -2320,12 +2320,12 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
         r.name, r.dept || "", r.employmentType || "", r.jobType || "",
         fmtH(r.workDays), fmtH(r.scheduledDays), fmtH(r.workHours), fmtH(r.scheduledHours),
         fmtH(r.legalOT), fmtH(r.prescribedOT), fmtH(r.nightOT), fmtH(r.holidayOT),
-        fmt(r.basicPay), fmt(r.basicPayAdjust), fmt(r.dutyAllowance), fmt(r.commuteAllow),
-        fmt(r.overtimePay), fmt(r.prescribedOvertimePay), fmt(r.nightOvertimePay), fmt(r.holidayPay),
-        fmt(r.otAdjust), fmt(r.otherAllowance), fmt(r.gross),
-        fmt(r.health), fmt(r.kaigo), fmt(r.pension), fmt(r.employment),
-        fmt(si), fmt(r.incomeTax), fmt(r.residentTax), fmt(r.yearAdjustment), fmt(r.totalDeduct),
-        fmt(r.net),
+        fmtCell(r.basicPay), fmtCell(r.basicPayAdjust), fmtCell(r.dutyAllowance), fmtCell(r.commuteAllow),
+        fmtCell(r.overtimePay), fmtCell(r.prescribedOvertimePay), fmtCell(r.nightOvertimePay), fmtCell(r.holidayPay),
+        fmtCell(r.otAdjust), fmtCell(r.otherAllowance), fmtCell(r.gross),
+        fmtCell(r.health), fmtCell(r.kaigo), fmtCell(r.pension), fmtCell(r.employment),
+        fmtCell(si), fmtCell(r.incomeTax), fmtCell(r.residentTax), fmtCell(r.yearAdjustment), fmtCell(r.totalDeduct),
+        fmtCell(r.net),
       ];
     };
 
@@ -2338,13 +2338,13 @@ body{font-family:'Noto Sans JP',-apple-system,sans-serif;color:#111;padding:32px
       fmtH(detailRows.reduce((s,r)=>s+(r.prescribedOT||0),0)),
       fmtH(detailRows.reduce((s,r)=>s+(r.nightOT||0),0)),
       fmtH(detailRows.reduce((s,r)=>s+(r.holidayOT||0),0)),
-      fmt(detailTotals.basicPay), "", fmt(detailTotals.dutyAllowance), "",
-      fmt(detailTotals.overtimePay), fmt(detailTotals.prescribedOvertimePay),
-      fmt(detailTotals.nightOvertimePay), fmt(detailTotals.holidayPay),
-      "", "", fmt(detailTotals.gross),
-      fmt(detailTotals.health), fmt(detailTotals.kaigo), fmt(detailTotals.pension), fmt(detailTotals.employment),
-      fmt(siTotal), fmt(detailTotals.incomeTax), fmt(detailTotals.residentTax), fmt(detailTotals.yearAdjustment), fmt(detailTotals.totalDeduct),
-      fmt(detailTotals.net),
+      fmtCell(detailTotals.basicPay), "", fmtCell(detailTotals.dutyAllowance), "",
+      fmtCell(detailTotals.overtimePay), fmtCell(detailTotals.prescribedOvertimePay),
+      fmtCell(detailTotals.nightOvertimePay), fmtCell(detailTotals.holidayPay),
+      "", "", fmtCell(detailTotals.gross),
+      fmtCell(detailTotals.health), fmtCell(detailTotals.kaigo), fmtCell(detailTotals.pension), fmtCell(detailTotals.employment),
+      fmtCell(siTotal), fmtCell(detailTotals.incomeTax), fmtCell(detailTotals.residentTax), fmtCell(detailTotals.yearAdjustment), fmtCell(detailTotals.totalDeduct),
+      fmtCell(detailTotals.net),
     ];
 
     // グループヘッダー行 HTML
@@ -3049,7 +3049,7 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Auto-save
+  // Auto-save (debounced 800ms to reduce rapid-fire writes)
   useEffect(() => {
     if (!isStateHydrated) return;
     const timer = setTimeout(async () => {
@@ -3073,12 +3073,13 @@ export default function App() {
             calcStatus,
             isAttendanceDirty,
             changeLogs,
+            _savedAt: new Date().toISOString(),
           }),
         });
         if (!res.ok) throw new Error("failed");
         setSaveStatus("保存済み");
       } catch { setSaveStatus("保存失敗"); }
-    }, 500);
+    }, 800);
     return () => clearTimeout(timer);
   }, [isStateHydrated, page, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
 

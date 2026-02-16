@@ -1,8 +1,6 @@
-import App from "../page";
+"use client";
 
-export const metadata = {
-  title: "Preview 2026-02-11 | きょうしん輸送 給与計算システム",
-};
+import App from "../page";
 
 export default function PreviewPage() {
   return <App />;
