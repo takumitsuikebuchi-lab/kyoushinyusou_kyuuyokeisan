@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase-client";
 import {
   calcPayroll, buildRates, estimateTax, taxYearFromPayMonth,
@@ -2992,7 +2992,8 @@ export default function App() {
   const [changeLogs, setChangeLogs] = useState([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
   const [saveStatus, setSaveStatus] = useState("読込中");
-  const [lastServerUpdatedAt, setLastServerUpdatedAt] = useState(null);
+  const lastServerUpdatedAtRef = useRef(null);
+  const isSavingRef = useRef(false);
   const [conflictWarning, setConflictWarning] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
@@ -3088,7 +3089,7 @@ export default function App() {
         }
         if (!cancelled) {
           setSaveStatus("保存済み");
-          setLastServerUpdatedAt(payload?.updatedAt || null);
+          lastServerUpdatedAtRef.current = payload?.updatedAt || null;
         }
       } catch { if (!cancelled) setSaveStatus("ローカル保存未接続"); }
       finally { if (!cancelled) setIsStateHydrated(true); }
@@ -3101,6 +3102,9 @@ export default function App() {
   useEffect(() => {
     if (!isStateHydrated) return;
     const timer = setTimeout(async () => {
+      // 保存中なら重複リクエストをスキップ
+      if (isSavingRef.current) return;
+      isSavingRef.current = true;
       try {
         setSaveStatus("保存中");
         const res = await fetch("/api/state", {
@@ -3121,7 +3125,7 @@ export default function App() {
             isAttendanceDirty,
             changeLogs,
             _savedAt: new Date().toISOString(),
-            _expectedUpdatedAt: lastServerUpdatedAt,
+            _expectedUpdatedAt: lastServerUpdatedAtRef.current,
             _userEmail: userEmail || null,
           }),
         });
@@ -3133,10 +3137,11 @@ export default function App() {
         }
         if (!res.ok) throw new Error("failed");
         const result = await res.json();
-        setLastServerUpdatedAt(result?.updatedAt || null);
+        lastServerUpdatedAtRef.current = result?.updatedAt || null;
         setConflictWarning(false);
         setSaveStatus("保存済み");
       } catch { setSaveStatus("保存失敗"); }
+      finally { isSavingRef.current = false; }
     }, 800);
     return () => clearTimeout(timer);
   }, [isStateHydrated, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
