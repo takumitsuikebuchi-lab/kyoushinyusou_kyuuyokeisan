@@ -401,21 +401,85 @@ const normalizeName = (value) =>
     .toLowerCase()
     .trim();
 
-const matchEmployeeIdByHrmosRecord = (hrmosRecord, employees) => {
-  const directId = String(hrmosRecord?.employeeId || "");
-  if (directId && employees.some((e) => String(e.id) === directId)) {
-    return directId;
+const normalizeHrmosEmployeeNumber = (value) => String(value || "").trim();
+const getEmployeeHrmosNumber = (emp) => normalizeHrmosEmployeeNumber(emp?.hrmosEmployeeNumber);
+
+const findEmployeesByHrmosNumber = (employees, hrmosEmployeeNumber) => {
+  const normalized = normalizeHrmosEmployeeNumber(hrmosEmployeeNumber);
+  if (!normalized) return [];
+  return employees.filter((e) => getEmployeeHrmosNumber(e) === normalized);
+};
+
+const collectEmployeeSetupIssues = (emp, employees = []) => {
+  if (emp.status !== "在籍") return [];
+  const issues = [];
+  if (!emp.joinDate) issues.push("入社日未設定");
+  if (!emp.employmentType) issues.push("雇用区分未設定");
+  if ((emp.basicPay || 0) <= 0) issues.push("基本給未設定");
+  if ((emp.stdMonthly || 0) <= 0) issues.push("標準報酬未設定");
+  if (String(emp.note || "").includes("仮登録")) issues.push("仮登録のまま");
+  if ((emp.employmentType === "役員" || emp.isOfficer) && emp.hasEmployment) issues.push("役員で雇保ON");
+  if (!getEmployeeHrmosNumber(emp)) issues.push("HRMOS連携ID未設定");
+  if (
+    getEmployeeHrmosNumber(emp) &&
+    employees.some((e) => String(e.id) !== String(emp.id) && getEmployeeHrmosNumber(e) === getEmployeeHrmosNumber(emp))
+  ) {
+    issues.push("HRMOS連携ID重複");
+  }
+  return issues;
+};
+
+const matchEmployeeByHrmosRecord = (hrmosRecord, employees) => {
+  const hrmosEmployeeNumber = normalizeHrmosEmployeeNumber(hrmosRecord?.employeeId);
+  const matchedByHrmosId = findEmployeesByHrmosNumber(employees, hrmosEmployeeNumber);
+  if (matchedByHrmosId.length === 1) {
+    return { matchedEmployeeId: String(matchedByHrmosId[0].id), matchType: "hrmosId", reason: "" };
+  }
+  if (matchedByHrmosId.length > 1) {
+    return { matchedEmployeeId: null, matchType: "conflict", reason: `HRMOS連携ID ${hrmosEmployeeNumber} が重複` };
+  }
+
+  const legacyDirectId = String(hrmosRecord?.employeeId || "");
+  if (legacyDirectId && employees.some((e) => String(e.id) === legacyDirectId)) {
+    return { matchedEmployeeId: legacyDirectId, matchType: "legacyId", reason: "従業員ID一致（旧方式）" };
   }
 
   const targetName = normalizeName(hrmosRecord?.employeeName);
-  if (!targetName) return directId || null;
+  if (!targetName) return { matchedEmployeeId: null, matchType: "unmatched", reason: "氏名情報なし" };
   const nameMatched = employees.filter((e) => normalizeName(e.name) === targetName);
   if (nameMatched.length === 1) {
-    return String(nameMatched[0].id);
+    return { matchedEmployeeId: String(nameMatched[0].id), matchType: "nameOnly", reason: "氏名一致のみ（手動確認が必要）" };
+  }
+  if (nameMatched.length > 1) {
+    return { matchedEmployeeId: null, matchType: "conflict", reason: "同名従業員が複数" };
   }
 
-  return directId || null;
+  return { matchedEmployeeId: null, matchType: "unmatched", reason: "HRMOS連携ID未登録" };
 };
+
+const hrmosMatchTypeLabel = (matchType) => {
+  if (matchType === "hrmosId") return "HRMOS連携ID一致";
+  if (matchType === "legacyId") return "従業員ID一致（旧方式）";
+  if (matchType === "nameOnly") return "氏名一致のみ";
+  if (matchType === "conflict") return "要確認（競合）";
+  return "未紐付け";
+};
+
+const toAttendanceFromHrmosRecord = (hrmosRecord, prevAtt, syncedAt) => ({
+  workDays: parseFloat(hrmosRecord.workDays) || 0,
+  scheduledDays: prevAtt?.scheduledDays || 0,
+  workHours: parseFloat(hrmosRecord.totalWorkHours) || 0,
+  scheduledHours: prevAtt?.scheduledHours || 0,
+  legalOT: parseFloat(hrmosRecord.overtimeHours) || 0,
+  prescribedOT: parseFloat(hrmosRecord.prescribedHours) || 0,
+  nightOT: parseFloat(hrmosRecord.lateNightHours) || 0,
+  holidayOT: parseFloat(hrmosRecord.holidayHours) || 0,
+  otAdjust: prevAtt?.otAdjust || 0,
+  basicPayAdjust: prevAtt?.basicPayAdjust || 0,
+  otherAllowance: prevAtt?.otherAllowance || 0,
+  hrmosSync: true,
+  syncedAt,
+});
 
 const parseCsvRows = (text, delimiter = ",") => {
   const rows = [];
@@ -508,17 +572,27 @@ const payrollCycleLabel = (month, payDateOverride) => {
 const fmt = (n) => n != null ? n.toLocaleString() : "-";
 const money = (n) => `¥${fmt(n || 0)}`;
 
-const buildMonthlyChecks = (employees, attendance, monthStatus) => {
+const buildMonthlyChecks = (employees, attendance, monthStatus, hrmosSettings, hrmosUnmatchedRecords) => {
   const critical = [];
   const warning = [];
   const active = employees.filter((e) => e.status === "在籍");
+  const hrmosEnabled = Boolean(hrmosSettings?.companyUrl && hrmosSettings?.apiKey);
+  const hrmosUnmatchedCount = Array.isArray(hrmosUnmatchedRecords) ? hrmosUnmatchedRecords.length : 0;
   if (active.length === 0) critical.push("在籍者が0名です。従業員登録を行ってください。");
+  if (hrmosUnmatchedCount > 0) {
+    critical.push(`HRMOS未紐付けデータが${hrmosUnmatchedCount}件あります。紐付け完了まで自動計算できません。`);
+  }
   active.forEach((emp) => {
     if (!emp.name) critical.push("氏名が空の従業員がいます。");
     if ((emp.basicPay || 0) <= 0) critical.push(`${emp.name}: 基本給が未設定です。`);
     if ((emp.stdMonthly || 0) <= 0) critical.push(`${emp.name}: 標準報酬月額が未設定です。`);
     if ((emp.dependents || 0) < 0) critical.push(`${emp.name}: 扶養人数が不正です。`);
     if (emp.isOfficer && emp.hasEmployment) critical.push(`${emp.name}: 役員は雇用保険対象外です。`);
+    const setupIssues = collectEmployeeSetupIssues(emp, employees);
+    if (setupIssues.includes("HRMOS連携ID重複")) critical.push(`${emp.name}: HRMOS連携IDが重複しています。`);
+    if (hrmosEnabled && setupIssues.includes("HRMOS連携ID未設定")) {
+      warning.push(`${emp.name}: HRMOS連携IDが未設定です。`);
+    }
     if (emp.stdMonthly > 0 && !findGradeByStdMonthly(emp.stdMonthly)) warning.push(`${emp.name}: 標準報酬月額 ¥${fmt(emp.stdMonthly)} が等級表に該当しません。`);
     if (!attendance[emp.id]) warning.push(`${emp.name}: 勤怠データがありません（0時間で計算）。`);
     if (!emp.joinDate) warning.push(`${emp.name}: 入社日が未入力です。`);
@@ -832,6 +906,8 @@ const PayrollPage = ({
   payrollMonth, payrollPayDate, payrollStatus, isAttendanceDirty,
   hrmosSettings, setHrmosSettings, onHrmosSync, onRunAutoCalc,
   syncStatus, calcStatus, monthlyChecks, monthlyProgressText, settings,
+  hrmosSyncPreview, hrmosUnmatchedRecords, onApplyHrmosPreview, onClearHrmosPreview,
+  onSetHrmosUnmatchedAssignment, onApplyHrmosUnmatchedAssignments,
 }) => {
   const [selected, setSelected] = useState(null);
   const updateHrmos = (field, value) => setHrmosSettings((prev) => ({ ...prev, [field]: value }));
@@ -849,6 +925,7 @@ const PayrollPage = ({
   );
   const hasCriticalChecks = monthlyChecks.critical.length > 0;
   const titleStatus = isAttendanceDirty ? "計算中" : payrollStatus;
+  const activeEmployees = employees.filter((e) => e.status === "在籍");
 
   return (
     <div>
@@ -1189,10 +1266,90 @@ const PayrollPage = ({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button className="btn btn-success btn-sm" onClick={onHrmosSync}>HRMOSから勤怠取込</button>
-            <button className="btn btn-primary btn-sm" onClick={onRunAutoCalc}>月次自動計算を実行</button>
+            <button className="btn btn-success btn-sm" onClick={onHrmosSync}>HRMOSから勤怠取込（プレビュー）</button>
+            <button className="btn btn-primary btn-sm" onClick={onRunAutoCalc} disabled={(hrmosUnmatchedRecords || []).length > 0}>月次自動計算を実行</button>
             <span style={{ fontSize: 12, color: "#94a3b8" }}>同期: {syncStatus || "-"} / 計算: {calcStatus || "-"}</span>
           </div>
+
+          {hrmosSyncPreview && (
+            <div style={{ marginTop: 12, border: "1px solid #cbd5e1", borderRadius: 10, padding: 10, background: "#f8fafc" }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>取込プレビュー（{monthFullLabel(hrmosSyncPreview.month)}）</div>
+              <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
+                取得 {hrmosSyncPreview.recordCount}件 / 自動反映 {hrmosSyncPreview.autoApplicableCount}件 / 手動確認 {hrmosSyncPreview.manualReviewCount}件
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <button className="btn btn-primary btn-sm" onClick={onApplyHrmosPreview}>この内容を反映</button>
+                <button className="btn btn-outline btn-sm" onClick={onClearHrmosPreview}>プレビュー破棄</button>
+              </div>
+              <div style={{ marginTop: 8, maxHeight: 220, overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff" }}>
+                <table className="data-table" style={{ minWidth: 680 }}>
+                  <thead>
+                    <tr>
+                      <th>HRMOS連携ID</th>
+                      <th>氏名</th>
+                      <th>判定</th>
+                      <th>紐付け先</th>
+                      <th>理由</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hrmosSyncPreview.rows.map((row) => (
+                      <tr key={row.recordKey}>
+                        <td className="mono">{row.hrmosEmployeeId || "-"}</td>
+                        <td>{row.hrmosEmployeeName || "-"}</td>
+                        <td>{hrmosMatchTypeLabel(row.matchType)}</td>
+                        <td>{row.matchedEmployeeName || "-"}</td>
+                        <td style={{ color: "var(--muted)", fontSize: 11 }}>{row.matchReason || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {(hrmosUnmatchedRecords || []).length > 0 && (
+            <div style={{ marginTop: 12, border: "1px solid #fecaca", borderRadius: 10, padding: 10, background: "#fff7ed" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#b45309" }}>未紐付けキュー（{hrmosUnmatchedRecords.length}件）</div>
+              <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
+                未紐付けが残っている間は自動計算をブロックします。紐付け先を選んで反映してください。
+              </div>
+              <div style={{ marginTop: 8, maxHeight: 260, overflow: "auto", border: "1px solid #fdba74", borderRadius: 8, background: "#fff" }}>
+                <table className="data-table" style={{ minWidth: 720 }}>
+                  <thead>
+                    <tr>
+                      <th>HRMOS連携ID</th>
+                      <th>氏名</th>
+                      <th>理由</th>
+                      <th>割当先</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hrmosUnmatchedRecords.map((row) => (
+                      <tr key={row.recordKey}>
+                        <td className="mono">{row.hrmosEmployeeId || "-"}</td>
+                        <td>{row.hrmosEmployeeName || "-"}</td>
+                        <td style={{ color: "var(--muted)", fontSize: 11 }}>{row.reason || "-"}</td>
+                        <td>
+                          <select value={row.assignedEmployeeId || ""} onChange={(e) => onSetHrmosUnmatchedAssignment(row.recordKey, e.target.value)}>
+                            <option value="">-- 在籍者を選択 --</option>
+                            {activeEmployees.map((emp) => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.name}（{getEmployeeHrmosNumber(emp) || "連携ID未設定"}）
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button className="btn btn-warning btn-sm" onClick={onApplyHrmosUnmatchedAssignments}>選択した割当を反映</button>
+              </div>
+            </div>
+          )}
         </Collapsible>
       </div>
 
@@ -1200,7 +1357,8 @@ const PayrollPage = ({
       <div style={{ marginTop: 12 }}>
         <Collapsible title="操作手順ガイド">
           <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 2, color: "#475569" }}>
-            <li>「HRMOSから勤怠取込」を押す（または残業時間を手入力）</li>
+            <li>「HRMOSから勤怠取込（プレビュー）」を押し、判定結果を確認して反映</li>
+            <li>未紐付けキューが出た場合は従業員を割当して反映</li>
             <li>表の「総支給額」と「差引支給額」を確認</li>
             <li>右上の「確定する」を押す</li>
             <li>「給与明細一覧」で対象月の明細を確認</li>
@@ -1272,6 +1430,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   const defaultAvgHours = Number(settings?.avgMonthlyHoursDefault) || 173.0;
   // New hire form state
   const [newName, setNewName] = useState("");
+  const [newHrmosEmployeeNumber, setNewHrmosEmployeeNumber] = useState("");
   const [newJoinDate, setNewJoinDate] = useState(todayStr);
   const [newEmploymentType, setNewEmploymentType] = useState("正社員");
   const [newDept, setNewDept] = useState(departments[0] || "");
@@ -1302,7 +1461,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
       if (!window.confirm("未保存の変更があります。破棄しますか？")) return;
     }
     setEditingId(emp.id);
-    setEditBuf({ ...emp });
+    setEditBuf({ ...emp, hrmosEmployeeNumber: getEmployeeHrmosNumber(emp) });
     setEditDirty(false);
     setEditSavedMsg("");
   };
@@ -1325,11 +1484,24 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   };
   const saveEdit = () => {
     if (!editBuf) return;
-    setEmployees((prev) => prev.map((e) => e.id === editBuf.id ? { ...editBuf } : e));
+    const normalizedHrmos = normalizeHrmosEmployeeNumber(editBuf.hrmosEmployeeNumber);
+    if (editBuf.status === "在籍" && !normalizedHrmos) {
+      setEditSavedMsg("HRMOS連携IDを入力してください");
+      return;
+    }
+    if (
+      normalizedHrmos &&
+      employees.some((e) => String(e.id) !== String(editBuf.id) && getEmployeeHrmosNumber(e) === normalizedHrmos)
+    ) {
+      setEditSavedMsg("HRMOS連携IDが重複しています");
+      return;
+    }
+    const nextEmp = { ...editBuf, hrmosEmployeeNumber: normalizedHrmos };
+    setEmployees((prev) => prev.map((e) => e.id === nextEmp.id ? nextEmp : e));
     setEditDirty(false);
     setEditSavedMsg("保存しました");
     if (setChangeLogs) {
-      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "更新", text: `${editBuf.name} の情報を更新` }, ...prev].slice(0, 30));
+      setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "更新", text: `${nextEmp.name} の情報を更新` }, ...prev].slice(0, 30));
     }
     setTimeout(() => setEditSavedMsg(""), 3000);
   };
@@ -1362,18 +1534,6 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     setEditSavedMsg("");
   };
 
-  const getEmployeeSetupIssues = (emp) => {
-    if (emp.status !== "在籍") return [];
-    const issues = [];
-    if (!emp.joinDate) issues.push("入社日未設定");
-    if (!emp.employmentType) issues.push("雇用区分未設定");
-    if ((emp.basicPay || 0) <= 0) issues.push("基本給未設定");
-    if ((emp.stdMonthly || 0) <= 0) issues.push("標準報酬未設定");
-    if (String(emp.note || "").includes("仮登録")) issues.push("仮登録のまま");
-    if ((emp.employmentType === "役員" || emp.isOfficer) && emp.hasEmployment) issues.push("役員で雇保ON");
-    return issues;
-  };
-
   const offboardEmployee = (id) => {
     const target = employees.find((e) => String(e.id) === String(id));
     if (!target || target.status !== "在籍") return;
@@ -1404,7 +1564,12 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
 
   const validateNewHire = () => {
     const errors = {};
+    const normalizedHrmosId = normalizeHrmosEmployeeNumber(newHrmosEmployeeNumber);
     if (!newName.trim()) errors.newName = "氏名は必須です";
+    if (!normalizedHrmosId) errors.newHrmosEmployeeNumber = "HRMOS連携IDは必須です";
+    if (normalizedHrmosId && employees.some((e) => getEmployeeHrmosNumber(e) === normalizedHrmosId)) {
+      errors.newHrmosEmployeeNumber = "HRMOS連携IDが重複しています";
+    }
     if (!newJoinDate) errors.newJoinDate = "入社日は必須です";
     if (!["正社員", "嘱託", "役員"].includes(newEmploymentType)) errors.newEmploymentType = "雇用区分を選択";
     if ((Number(newDependents) || 0) < 0) errors.newDependents = "0以上";
@@ -1423,6 +1588,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     const isOfficer = newEmploymentType === "役員";
     const newEmployee = {
       id: nextId, name: newName.trim(), joinDate: newJoinDate, joinFiscalYear: fiscalYearFromDate(newJoinDate),
+      hrmosEmployeeNumber: normalizeHrmosEmployeeNumber(newHrmosEmployeeNumber),
       employmentType: newEmploymentType, dept: newDept || departments[0] || "運送事業", jobType: newJobType || jobTypes[0] || "トラックドライバー",
       basicPay: Number(newBasePay) || 0, dutyAllowance: Number(newDutyAllowance) || 0, commuteAllow: Number(newCommuteAllow) || 0, avgMonthlyHours: defaultAvgHours,
       stdMonthly: Number(newStdMonthly) || Number(newBasePay) || 0,
@@ -1433,7 +1599,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
     setEmployees((prev) => [...prev, newEmployee]);
     setAttendance((prev) => ({ ...prev, [nextId]: { workDays: 0, legalOT: 0, prescribedOT: 0, nightOT: 0, holidayOT: 0 } }));
     setPaidLeaveBalance((prev) => [...prev, { empId: nextId, granted: 10, used: 0, carry: 0 }]);
-    setNewName(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0");
+    setNewName(""); setNewHrmosEmployeeNumber(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0");
     setOnboardingMessage(`${newEmployee.name} を登録しました`);
     setShowForm(false);
     if (setChangeLogs) setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "入社", text: `${newEmployee.name} (${newEmployee.employmentType}) を登録` }, ...prev].slice(0, 30));
@@ -1449,14 +1615,17 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
 
   const activeCount = employees.filter((e) => e.status === "在籍").length;
   const retiredCount = employees.filter((e) => e.status !== "在籍").length;
-  const setupPendingCount = employees.filter((e) => getEmployeeSetupIssues(e).length > 0).length;
+  const setupPendingCount = employees.filter((e) => collectEmployeeSetupIssues(e, employees).length > 0).length;
 
   const filteredEmployees = employees
     .filter((emp) => activeTab === "在籍者" ? emp.status === "在籍" : emp.status !== "在籍")
     .filter((emp) => {
       const q = query.trim().toLowerCase();
       if (!q) return true;
-      return String(emp.name).toLowerCase().includes(q) || String(emp.jobType).toLowerCase().includes(q) || String(emp.dept).toLowerCase().includes(q);
+      return String(emp.name).toLowerCase().includes(q)
+        || String(emp.jobType).toLowerCase().includes(q)
+        || String(emp.dept).toLowerCase().includes(q)
+        || String(getEmployeeHrmosNumber(emp)).toLowerCase().includes(q);
     });
 
   // Short note: show only last segment
@@ -1487,6 +1656,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
         <Card title="新規従業員登録">
           <div className="form-grid" style={{ marginBottom: 12 }}>
             <label className="form-label">氏名 *<input placeholder="山田 太郎" value={newName} onChange={(e) => setNewName(e.target.value)} className={onboardingErrors.newName ? "error" : ""} />{onboardingErrors.newName && <span className="error-text">{onboardingErrors.newName}</span>}</label>
+            <label className="form-label">HRMOS連携ID *<input placeholder="例: 10023" value={newHrmosEmployeeNumber} onChange={(e) => setNewHrmosEmployeeNumber(e.target.value)} className={onboardingErrors.newHrmosEmployeeNumber ? "error" : ""} />{onboardingErrors.newHrmosEmployeeNumber && <span className="error-text">{onboardingErrors.newHrmosEmployeeNumber}</span>}</label>
             <label className="form-label">入社日 *<input type="date" value={newJoinDate} onChange={(e) => setNewJoinDate(e.target.value)} className={onboardingErrors.newJoinDate ? "error" : ""} /></label>
             <label className="form-label">雇用区分 *<select value={newEmploymentType} onChange={(e) => setNewEmploymentType(e.target.value)}><option value="正社員">正社員</option><option value="嘱託">嘱託</option><option value="役員">役員</option></select></label>
             <label className="form-label">部門<select value={newDept} onChange={(e) => setNewDept(e.target.value)}>{departments.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
@@ -1535,6 +1705,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
             <thead>
               <tr>
                 <th>氏名</th>
+                <th>HRMOS連携ID</th>
                 <th>区分</th>
                 <th>部門 / 職種</th>
                 <th className="right">基本給</th>
@@ -1546,7 +1717,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
             </thead>
             <tbody>
               {filteredEmployees.map((emp) => {
-                const issues = getEmployeeSetupIssues(emp);
+                const issues = collectEmployeeSetupIssues(emp, employees);
                 const isEditing = editingId === emp.id;
                 return (
                   <React.Fragment key={emp.id}>
@@ -1556,6 +1727,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
                         <div style={{ fontWeight: 600 }}>{emp.name}</div>
                         {shortNote(emp.note) && <div style={{ fontSize: 10, color: "var(--warning)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortNote(emp.note)}</div>}
                       </td>
+                      <td style={{ fontSize: 12, color: getEmployeeHrmosNumber(emp) ? "var(--text)" : "var(--warning)" }}>{getEmployeeHrmosNumber(emp) || "未設定"}</td>
                       <td style={{ fontSize: 12 }}>{emp.employmentType || (emp.isOfficer ? "役員" : "正社員")}</td>
                       <td style={{ fontSize: 12, color: "var(--muted)" }}>{emp.dept} / {emp.jobType}</td>
                       <td className="right mono" style={{ fontSize: 12 }}>¥{fmt(emp.basicPay)}</td>
@@ -1586,7 +1758,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
                     </tr>
                     {isEditing && editBuf && (
                       <tr className="edit-row-expand">
-                        <td colSpan={8} style={{ padding: 0, border: "none" }}>
+                        <td colSpan={9} style={{ padding: 0, border: "none" }}>
                           <div className="inline-edit-panel">
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1603,6 +1775,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
                             </div>
                             <div className="form-grid">
                               <label className="form-label">氏名<input value={editBuf.name} onChange={(e) => updateBuf("name", e.target.value)} /></label>
+                              <label className="form-label">HRMOS連携ID<input value={editBuf.hrmosEmployeeNumber || ""} onChange={(e) => updateBuf("hrmosEmployeeNumber", e.target.value)} /></label>
                               <label className="form-label">雇用区分<select value={editBuf.employmentType || (editBuf.isOfficer ? "役員" : "正社員")} onChange={(e) => { updateBuf("employmentType", e.target.value); updateBuf("isOfficer", e.target.value === "役員"); }}><option value="正社員">正社員</option><option value="嘱託">嘱託</option><option value="役員">役員</option></select></label>
                               <label className="form-label">部門<select value={editBuf.dept} onChange={(e) => updateBuf("dept", e.target.value)}>{departments.map((d) => <option key={d} value={d}>{d}</option>)}</select></label>
                               <label className="form-label">職種<select value={editBuf.jobType} onChange={(e) => updateBuf("jobType", e.target.value)}>{jobTypes.map((j) => <option key={j} value={j}>{j}</option>)}</select></label>
@@ -2778,6 +2951,8 @@ export default function App() {
   const [paidLeaveBalance, setPaidLeaveBalance] = useState(INITIAL_PAID_LEAVE_BALANCE);
   const [settings, setSettings] = useState(INITIAL_MASTER_SETTINGS);
   const [hrmosSettings, setHrmosSettings] = useState(INITIAL_HRMOS_SETTINGS);
+  const [hrmosSyncPreview, setHrmosSyncPreview] = useState(null);
+  const [hrmosUnmatchedRecords, setHrmosUnmatchedRecords] = useState([]);
   const [syncStatus, setSyncStatus] = useState("");
   const [calcStatus, setCalcStatus] = useState("");
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false);
@@ -2791,7 +2966,10 @@ export default function App() {
   const payrollTargetRow = sortedMonthlyHistory.find((m) => m.month === payrollTargetMonth);
   const payrollTargetPayDate = payrollTargetRow?.payDate || defaultPayDateStringByMonth(payrollTargetMonth, settings.paymentDay);
   const payrollTargetStatus = payrollTargetRow?.status || "未計算";
-  const monthlyChecks = useMemo(() => buildMonthlyChecks(employees, attendance, payrollTargetStatus), [employees, attendance, payrollTargetStatus]);
+  const monthlyChecks = useMemo(
+    () => buildMonthlyChecks(employees, attendance, payrollTargetStatus, hrmosSettings, hrmosUnmatchedRecords),
+    [employees, attendance, payrollTargetStatus, hrmosSettings, hrmosUnmatchedRecords]
+  );
   const latestConfirmedMonth = useMemo(() => sortedMonthlyHistory.filter((m) => m.status === "確定").map((m) => m.month).sort((a, b) => a.localeCompare(b)).at(-1) || null, [sortedMonthlyHistory]);
   const monthlyProgressText = oldestUnconfirmed ? `確定済み: ${latestConfirmedMonth ? monthFullLabel(latestConfirmedMonth) : "なし"} / 次: ${monthFullLabel(oldestUnconfirmed.month)}` : `全期間確定済み`;
   const actionText = nextActionText(payrollTargetStatus, isAttendanceDirty);
@@ -2815,7 +2993,7 @@ export default function App() {
         const saved = payload?.data;
         if (saved && !cancelled) {
           setPage(["dashboard", "payroll", "history", "employees", "leave", "settings"].includes(saved.page) ? saved.page : "dashboard");
-          setEmployees(saved.employees || INITIAL_EMPLOYEES);
+          setEmployees((saved.employees || INITIAL_EMPLOYEES).map((emp) => ({ ...emp, hrmosEmployeeNumber: getEmployeeHrmosNumber(emp) })));
 
           // attendanceが配列形式の場合、オブジェクト形式に変換
           let attendanceData = saved.attendance || INITIAL_ATTENDANCE;
@@ -2856,6 +3034,8 @@ export default function App() {
           setPaidLeaveBalance(saved.paidLeaveBalance || INITIAL_PAID_LEAVE_BALANCE);
           setSettings(mergedSettings);
           setHrmosSettings(saved.hrmosSettings || INITIAL_HRMOS_SETTINGS);
+          setHrmosSyncPreview(saved.hrmosSyncPreview || null);
+          setHrmosUnmatchedRecords(Array.isArray(saved.hrmosUnmatchedRecords) ? saved.hrmosUnmatchedRecords : []);
           setSyncStatus(saved.syncStatus || "");
           setCalcStatus(saved.calcStatus || "");
           setIsAttendanceDirty(Boolean(saved.isAttendanceDirty));
@@ -2875,13 +3055,32 @@ export default function App() {
     const timer = setTimeout(async () => {
       try {
         setSaveStatus("保存中");
-        const res = await fetch("/api/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, syncStatus, calcStatus, isAttendanceDirty, changeLogs }) });
+        const res = await fetch("/api/state", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            page,
+            employees,
+            attendance,
+            monthlyHistory,
+            monthlySnapshots,
+            paidLeaveBalance,
+            settings,
+            hrmosSettings,
+            hrmosSyncPreview,
+            hrmosUnmatchedRecords,
+            syncStatus,
+            calcStatus,
+            isAttendanceDirty,
+            changeLogs,
+          }),
+        });
         if (!res.ok) throw new Error("failed");
         setSaveStatus("保存済み");
       } catch { setSaveStatus("保存失敗"); }
     }, 500);
     return () => clearTimeout(timer);
-  }, [isStateHydrated, page, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
+  }, [isStateHydrated, page, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
 
   const onConfirmPayroll = (results) => {
     const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
@@ -2908,117 +3107,147 @@ export default function App() {
     try {
       const res = await fetch("/api/hrmos/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...hrmosSettings, targetMonth: payrollTargetMonth }) });
       const data = await res.json();
-      setSyncStatus(data.message || "同期完了");
-
-      let updatedAttendance = null;
-      const unknownEmployees = [];
-      const provisionalEmployees = new Map();
-
-      // 取得したデータを勤怠テーブルに反映（オブジェクト形式）
-      if (res.ok && data.data && Array.isArray(data.data)) {
-        const updated = { ...attendance };
-        data.data.forEach((hrmosRecord) => {
-          const matchedId = matchEmployeeIdByHrmosRecord(hrmosRecord, employees);
-          const empId = matchedId || String(hrmosRecord.employeeId);
-          const isKnownEmployee = employees.some((e) => String(e.id) === empId);
-          if (!isKnownEmployee) {
-            unknownEmployees.push(`${hrmosRecord.employeeName || "-"}(${hrmosRecord.employeeId})`);
-            if (!provisionalEmployees.has(empId)) {
-              provisionalEmployees.set(empId, {
-                id: empId,
-                name: String(hrmosRecord.employeeName || `HRMOS ${empId}`).trim(),
-              });
-            }
-          }
-
-          // オブジェクト形式で保存（calcPayrollで使用される形式に合わせる）
-          const prevAtt = updated[empId] || {};
-          updated[empId] = {
-            workDays: parseFloat(hrmosRecord.workDays) || 0,
-            scheduledDays: prevAtt.scheduledDays || 0,
-            workHours: parseFloat(hrmosRecord.totalWorkHours) || 0,
-            scheduledHours: prevAtt.scheduledHours || 0,
-            legalOT: parseFloat(hrmosRecord.overtimeHours) || 0,
-            prescribedOT: parseFloat(hrmosRecord.prescribedHours) || 0,
-            nightOT: parseFloat(hrmosRecord.lateNightHours) || 0,
-            holidayOT: parseFloat(hrmosRecord.holidayHours) || 0,
-            otAdjust: prevAtt.otAdjust || 0,
-            basicPayAdjust: prevAtt.basicPayAdjust || 0,
-            otherAllowance: prevAtt.otherAllowance || 0,
-            hrmosSync: true,
-            syncedAt: data.syncedAt
-          };
-        });
-        setAttendance(updated);
-        updatedAttendance = updated;
-        setIsAttendanceDirty(true);
-
-        if (provisionalEmployees.size > 0) {
-          const today = new Date().toISOString().slice(0, 10);
-          const defaultAvgHours = Number(settings?.avgMonthlyHoursDefault) || 173.0;
-          const deptDefault = settings?.departments?.[0] || "未設定";
-          const jobTypeDefault = settings?.jobTypes?.[0] || "未設定";
-
-          setEmployees((prev) => {
-            const existingIds = new Set(prev.map((e) => String(e.id)));
-            const additions = Array.from(provisionalEmployees.values())
-              .filter((item) => !existingIds.has(String(item.id)))
-              .map((item) => ({
-                id: item.id,
-                name: item.name,
-                joinDate: "",
-                joinFiscalYear: fiscalYearOf(payrollTargetMonth),
-                employmentType: null,
-                dept: deptDefault,
-                jobType: jobTypeDefault,
-                basicPay: 0,
-                dutyAllowance: 0,
-                commuteAllow: 0,
-                avgMonthlyHours: defaultAvgHours,
-                stdMonthly: 0,
-                hasKaigo: false,
-                hasPension: false,
-                hasEmployment: false,
-                dependents: 0,
-                residentTax: 0,
-                isOfficer: false,
-                status: "在籍",
-                note: `HRMOS連携で自動仮登録 (${today})`,
-              }));
-            return additions.length > 0 ? [...prev, ...additions] : prev;
-          });
-
-          setPaidLeaveBalance((prev) => {
-            const existingIds = new Set(prev.map((row) => String(row.empId)));
-            const additions = Array.from(provisionalEmployees.values())
-              .filter((item) => !existingIds.has(String(item.id)))
-              .map((item) => ({ empId: item.id, granted: 0, used: 0, carry: 0 }));
-            return additions.length > 0 ? [...prev, ...additions] : prev;
-          });
-        }
-
-        const warningText = unknownEmployees.length > 0
-          ? `（仮登録した従業員: ${unknownEmployees.join("、")}）`
-          : "";
-        setSyncStatus((data.message || "同期完了") + warningText);
-        setChangeLogs((prev) => [{
-          at: new Date().toISOString(),
-          type: "連携",
-          text: `HRMOSから${data.recordCount}件の勤怠データを取込${warningText}`,
-        }, ...prev].slice(0, 30));
+      if (!res.ok) {
+        throw new Error(data?.message || "同期に失敗しました");
+      }
+      if (!Array.isArray(data.data)) {
+        throw new Error("勤怠データ形式が不正です");
       }
 
-      // 自動計算: 同期で構築したattendanceを直接渡す（React state反映を待たない）
-      if (res.ok && hrmosSettings.autoCalcEnabled) {
-        onRunAutoCalc(updatedAttendance);
-      }
+      const previewRows = data.data.map((hrmosRecord, idx) => {
+        const matched = matchEmployeeByHrmosRecord(hrmosRecord, employees);
+        const matchedEmployee = employees.find((e) => String(e.id) === String(matched.matchedEmployeeId));
+        return {
+          recordKey: `${String(hrmosRecord.employeeId || "")}:${normalizeName(hrmosRecord.employeeName)}:${idx}`,
+          hrmosEmployeeId: String(hrmosRecord.employeeId || ""),
+          hrmosEmployeeName: String(hrmosRecord.employeeName || "").trim(),
+          hrmosRecord,
+          matchType: matched.matchType,
+          matchReason: matched.reason || "",
+          matchedEmployeeId: matched.matchedEmployeeId ? String(matched.matchedEmployeeId) : "",
+          matchedEmployeeName: matchedEmployee?.name || "",
+        };
+      });
+      const autoApplicableCount = previewRows.filter((row) => row.matchType === "hrmosId" || row.matchType === "legacyId").length;
+      const manualReviewCount = previewRows.length - autoApplicableCount;
+      setHrmosSyncPreview({
+        month: data.month || payrollTargetMonth,
+        syncedAt: data.syncedAt || new Date().toISOString(),
+        recordCount: data.recordCount || previewRows.length,
+        autoApplicableCount,
+        manualReviewCount,
+        rows: previewRows,
+      });
+      setSyncStatus(`プレビュー作成: ${previewRows.length}件（自動反映 ${autoApplicableCount} / 手動確認 ${manualReviewCount}）`);
+      setChangeLogs((prev) => [{
+        at: new Date().toISOString(),
+        type: "連携",
+        text: `HRMOS取込プレビューを作成（${previewRows.length}件）`,
+      }, ...prev].slice(0, 30));
     } catch (err) {
       setSyncStatus(`同期失敗: ${err.message}`);
       setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "エラー", text: `HRMOS同期エラー: ${err.message}` }, ...prev].slice(0, 30));
     }
   };
 
-  const onRunAutoCalc = (attendanceOverride) => {
+  const onClearHrmosPreview = () => {
+    setHrmosSyncPreview(null);
+    setSyncStatus("プレビューを破棄しました");
+  };
+
+  const onApplyHrmosPreview = () => {
+    if (!hrmosSyncPreview || !Array.isArray(hrmosSyncPreview.rows)) return;
+    const nextAttendance = { ...attendance };
+    const nextUnmatched = [];
+    let appliedCount = 0;
+    hrmosSyncPreview.rows.forEach((row) => {
+      if (row.matchType === "hrmosId" || row.matchType === "legacyId") {
+        const targetEmpId = String(row.matchedEmployeeId || "");
+        if (targetEmpId) {
+          const prevAtt = nextAttendance[targetEmpId] || EMPTY_ATTENDANCE;
+          nextAttendance[targetEmpId] = toAttendanceFromHrmosRecord(row.hrmosRecord, prevAtt, hrmosSyncPreview.syncedAt);
+          appliedCount += 1;
+          return;
+        }
+      }
+      nextUnmatched.push({
+        recordKey: row.recordKey,
+        hrmosEmployeeId: row.hrmosEmployeeId,
+        hrmosEmployeeName: row.hrmosEmployeeName,
+        reason: row.matchReason || (row.matchType === "nameOnly" ? "氏名一致のみ（手動確認が必要）" : "未紐付け"),
+        suggestedEmployeeId: row.matchType === "nameOnly" ? String(row.matchedEmployeeId || "") : "",
+        assignedEmployeeId: row.matchType === "nameOnly" ? String(row.matchedEmployeeId || "") : "",
+        hrmosRecord: row.hrmosRecord,
+        syncedAt: hrmosSyncPreview.syncedAt,
+      });
+    });
+    setAttendance(nextAttendance);
+    if (appliedCount > 0) setIsAttendanceDirty(true);
+    setHrmosUnmatchedRecords(nextUnmatched);
+    setHrmosSyncPreview(null);
+    setSyncStatus(`反映完了: ${appliedCount}件 / 未紐付け ${nextUnmatched.length}件`);
+    setChangeLogs((prev) => [{
+      at: new Date().toISOString(),
+      type: "連携",
+      text: `HRMOS反映: ${appliedCount}件適用 / 未紐付け${nextUnmatched.length}件`,
+    }, ...prev].slice(0, 30));
+
+    if (hrmosSettings.autoCalcEnabled && nextUnmatched.length === 0 && appliedCount > 0) {
+      onRunAutoCalc(nextAttendance, { unmatchedCount: nextUnmatched.length });
+    }
+  };
+
+  const onSetHrmosUnmatchedAssignment = (recordKey, employeeId) => {
+    setHrmosUnmatchedRecords((prev) => prev.map((row) => (
+      row.recordKey === recordKey ? { ...row, assignedEmployeeId: String(employeeId || "") } : row
+    )));
+  };
+
+  const onApplyHrmosUnmatchedAssignments = () => {
+    if (!Array.isArray(hrmosUnmatchedRecords) || hrmosUnmatchedRecords.length === 0) return;
+    const nextAttendance = { ...attendance };
+    const remain = [];
+    let appliedCount = 0;
+
+    hrmosUnmatchedRecords.forEach((row) => {
+      const targetEmpId = String(row.assignedEmployeeId || "");
+      if (targetEmpId && employees.some((e) => String(e.id) === targetEmpId)) {
+        const prevAtt = nextAttendance[targetEmpId] || EMPTY_ATTENDANCE;
+        nextAttendance[targetEmpId] = toAttendanceFromHrmosRecord(row.hrmosRecord, prevAtt, row.syncedAt);
+        appliedCount += 1;
+      } else {
+        remain.push(row);
+      }
+    });
+
+    if (appliedCount === 0) {
+      setSyncStatus("未紐付けデータに割当先がありません");
+      return;
+    }
+
+    setAttendance(nextAttendance);
+    setIsAttendanceDirty(true);
+    setHrmosUnmatchedRecords(remain);
+    setSyncStatus(`未紐付け反映: ${appliedCount}件 / 残り ${remain.length}件`);
+    setChangeLogs((prev) => [{
+      at: new Date().toISOString(),
+      type: "連携",
+      text: `未紐付け割当を反映（${appliedCount}件）`,
+    }, ...prev].slice(0, 30));
+
+    if (hrmosSettings.autoCalcEnabled && remain.length === 0) {
+      onRunAutoCalc(nextAttendance, { unmatchedCount: remain.length });
+    }
+  };
+
+  const onRunAutoCalc = (attendanceOverride, options = {}) => {
+    const unresolvedCount = typeof options.unmatchedCount === "number"
+      ? options.unmatchedCount
+      : (hrmosUnmatchedRecords || []).length;
+    if (unresolvedCount > 0) {
+      setCalcStatus("計算停止（未紐付けデータあり）");
+      return;
+    }
     setCalcStatus("計算実行中...");
     try {
       const att = attendanceOverride || attendance;
@@ -3088,7 +3317,11 @@ export default function App() {
             hrmosSettings={hrmosSettings} setHrmosSettings={setHrmosSettings}
             onHrmosSync={onHrmosSync} onRunAutoCalc={onRunAutoCalc}
             syncStatus={syncStatus} calcStatus={calcStatus} monthlyChecks={monthlyChecks}
-            monthlyProgressText={monthlyProgressText} settings={settings} />
+            monthlyProgressText={monthlyProgressText} settings={settings}
+            hrmosSyncPreview={hrmosSyncPreview} hrmosUnmatchedRecords={hrmosUnmatchedRecords}
+            onApplyHrmosPreview={onApplyHrmosPreview} onClearHrmosPreview={onClearHrmosPreview}
+            onSetHrmosUnmatchedAssignment={onSetHrmosUnmatchedAssignment}
+            onApplyHrmosUnmatchedAssignments={onApplyHrmosUnmatchedAssignments} />
         )}
         {page === "employees" && (
           <EmployeesPage employees={employees} setEmployees={setEmployees} setAttendance={setAttendance}

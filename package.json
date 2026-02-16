@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "serve:prod": "bash scripts/run-prod.sh",
+    "deploy:local": "bash scripts/deploy-local.sh",
+    "service": "bash scripts/service-launchd.sh",
+    "migrate:state:supabase": "node scripts/migrate-state-to-supabase.mjs"
   },
   "dependencies": {
     "next": "14.2.26",
