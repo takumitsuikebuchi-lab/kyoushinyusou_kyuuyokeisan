@@ -3009,10 +3009,8 @@ export default function App() {
   const [changeLogs, setChangeLogs] = useState([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
   const [saveStatus, setSaveStatus] = useState("読込中");
-  const lastServerUpdatedAtRef = useRef(null);
   const isSavingRef = useRef(false);
   const hydratedAtRef = useRef(null); // hydrate完了時刻（直後のauto-save抑制用）
-  const [conflictWarning, setConflictWarning] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
   // Fetch logged-in user email
@@ -3107,7 +3105,6 @@ export default function App() {
         }
         if (!cancelled) {
           setSaveStatus("保存済み");
-          lastServerUpdatedAtRef.current = payload?.updatedAt || null;
         }
       } catch { if (!cancelled) setSaveStatus("ローカル保存未接続"); }
       finally {
@@ -3125,7 +3122,7 @@ export default function App() {
   useEffect(() => {
     if (!isStateHydrated) return;
     const timer = setTimeout(async () => {
-      // hydrate直後2秒間はauto-saveをスキップ（自分自身との409競合を防ぐ）
+      // hydrate直後2秒間はauto-saveをスキップ（連続書き込みによる重複を防ぐ）
       if (hydratedAtRef.current && Date.now() - hydratedAtRef.current < 2000) return;
       // 保存中なら重複リクエストをスキップ
       if (isSavingRef.current) return;
@@ -3149,21 +3146,10 @@ export default function App() {
             calcStatus,
             isAttendanceDirty,
             changeLogs,
-            _savedAt: new Date().toISOString(),
-            _expectedUpdatedAt: lastServerUpdatedAtRef.current,
             _userEmail: userEmail || null,
           }),
         });
-        if (res.status === 409) {
-          // Optimistic lock conflict – another user saved
-          setConflictWarning(true);
-          setSaveStatus("競合検出");
-          return;
-        }
         if (!res.ok) throw new Error("failed");
-        const result = await res.json();
-        lastServerUpdatedAtRef.current = result?.updatedAt || null;
-        setConflictWarning(false);
         setSaveStatus("保存済み");
       } catch { setSaveStatus("保存失敗"); }
       finally { isSavingRef.current = false; }
@@ -3390,16 +3376,9 @@ export default function App() {
           <span style={{ color: "#cbd5e1" }}>|</span>
           <span>{actionText}</span>
           <span style={{ color: "#cbd5e1" }}>|</span>
-          <span style={{ color: saveStatus === "保存失敗" || saveStatus === "競合検出" ? "#dc2626" : undefined }}>{saveStatus}</span>
+          <span style={{ color: saveStatus === "保存失敗" ? "#dc2626" : undefined }}>{saveStatus}</span>
         </div>
 
-        {/* Conflict Warning Banner */}
-        {conflictWarning && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 16px", margin: "0 0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, color: "#dc2626" }}>
-            <span>⚠️ 他のユーザーがデータを更新しました。最新データを取得してください。</span>
-            <button onClick={() => window.location.reload()} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>最新データを取得</button>
-          </div>
-        )}
 
         {page === "dashboard" && (
           <DashboardPage employees={employees} attendance={attendance}

@@ -103,26 +103,6 @@ const writeAuditLog = async (userEmail, action, detail) => {
   }
 };
 
-/**
- * Read the current updatedAt timestamp from the active storage.
- * Used for optimistic locking: compare before writing.
- */
-const getCurrentUpdatedAt = async () => {
-  if (hasSupabaseConfig) {
-    try {
-      const state = await readStateFromSupabase();
-      return state?.updatedAt || null;
-    } catch {
-      // fallback to file
-    }
-  }
-  try {
-    const state = await readStateFile();
-    return state?.updatedAt || null;
-  } catch {
-    return null;
-  }
-};
 
 export async function GET() {
   try {
@@ -171,28 +151,9 @@ export async function PUT(req) {
       );
     }
 
-    // --- Optimistic locking ---
-    // Client sends _expectedUpdatedAt to detect concurrent writes.
-    // If the stored updatedAt differs, another user saved in the meantime → 409.
-    const expectedUpdatedAt = body._expectedUpdatedAt || null;
     const userEmail = body._userEmail || null;
-    delete body._expectedUpdatedAt; // Don't persist the meta field
+    delete body._expectedUpdatedAt;
     delete body._userEmail;
-
-    if (expectedUpdatedAt) {
-      const currentUpdatedAt = await getCurrentUpdatedAt();
-      if (currentUpdatedAt && currentUpdatedAt !== expectedUpdatedAt) {
-        return NextResponse.json(
-          {
-            ok: false,
-            conflict: true,
-            message: "他のユーザーがデータを更新しました。最新データを取得してください。",
-            serverUpdatedAt: currentUpdatedAt,
-          },
-          { status: 409 }
-        );
-      }
-    }
 
     const state = {
       version: STATE_VERSION,
