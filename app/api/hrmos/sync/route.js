@@ -151,6 +151,29 @@ function transformAttendanceData(hrmosData) {
     const segmentTitle = record.segment_title || '';
     const actualWorkMinutes = timeToMinutes(record.actual_working_hours);
 
+    // ===== [DEBUG] 残業関連フィールドの生値をログ出力 =====
+    // 渡曾羊一など全従業員の日次rawデータを確認するため全件出力
+    const otRaw = record.excess_of_statutory_working_hours;
+    const otHolRaw = record.excess_of_statutory_working_hours_in_holidays;
+    const preRaw = record.hours_in_statutory_working_hours;
+    const nightRaw = record.late_night_overtime_working_hours;
+    const holPreRaw = record.hours_in_statutory_working_hours_in_holidays;
+    if (
+      otRaw || otHolRaw || preRaw || nightRaw || holPreRaw
+    ) {
+      console.log(
+        `[DEBUG RAW] ${user.employeeName}(${userId}) ${record.date || '?'} seg="${segmentTitle}"` +
+        ` | actual=${record.actual_working_hours}` +
+        ` | excess_statutory=${otRaw}` +
+        ` | excess_statutory_holiday=${otHolRaw}` +
+        ` | hours_in_statutory=${preRaw}` +
+        ` | late_night=${nightRaw}` +
+        ` | hours_in_statutory_holiday=${holPreRaw}` +
+        ` => OT+=${timeToMinutes(otRaw) + timeToMinutes(otHolRaw)}min prescribed+=${timeToMinutes(preRaw)}min`
+      );
+    }
+    // ===== [DEBUG END] =====
+
     // 出勤日カウント（休日系区分は除外）
     if (shouldCountWorkDay(record)) {
       user.workDays++;
@@ -189,6 +212,18 @@ function transformAttendanceData(hrmosData) {
     // number が利用できない場合は hrmos_ プレフィックス付き user_id をフォールバック
     // （number が空の従業員の user_id が他の従業員の number と衝突するのを防ぐ）
     const employeeId = user.employeeNumber || `hrmos_${user.employeeId}`;
+
+    // ===== [DEBUG] 月次集計サマリー =====
+    console.log(
+      `[DEBUG SUMMARY] ${user.employeeName}(${employeeId})` +
+      ` workDays=${user.workDays}` +
+      ` totalMin=${user.totalWorkMinutes}(${(user.totalWorkMinutes/60).toFixed(1)}h)` +
+      ` OT=${user.overtimeMinutes}min(${(user.overtimeMinutes/60).toFixed(1)}h)` +
+      ` prescribed=${user.prescribedMinutes}min(${(user.prescribedMinutes/60).toFixed(1)}h)` +
+      ` night=${user.lateNightMinutes}min(${(user.lateNightMinutes/60).toFixed(1)}h)` +
+      ` holiday=${user.holidayMinutes}min(${(user.holidayMinutes/60).toFixed(1)}h)`
+    );
+    // ===== [DEBUG END] =====
 
     return {
       employeeId: employeeId,
