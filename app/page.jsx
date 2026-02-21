@@ -270,16 +270,18 @@ const hrmosMatchTypeLabel = (matchType) => {
 
 const toAttendanceFromHrmosRecord = (hrmosRecord, prevAtt, syncedAt) => ({
   workDays: parseFloat(hrmosRecord.workDays) || 0,
-  scheduledDays: prevAtt?.scheduledDays || 0,
+  scheduledDays: prevAtt?.scheduledDays || 0,   // 所定日数は手動入力値を維持
   workHours: parseFloat(hrmosRecord.totalWorkHours) || 0,
-  scheduledHours: prevAtt?.scheduledHours || 0,
+  scheduledHours: prevAtt?.scheduledHours || 0, // 所定時間は手動入力値を維持
   legalOT: parseFloat(hrmosRecord.overtimeHours) || 0,
   prescribedOT: parseFloat(hrmosRecord.prescribedHours) || 0,
   nightOT: parseFloat(hrmosRecord.lateNightHours) || 0,
   holidayOT: parseFloat(hrmosRecord.holidayHours) || 0,
-  otAdjust: prevAtt?.otAdjust || 0,
-  basicPayAdjust: prevAtt?.basicPayAdjust || 0,
-  otherAllowance: prevAtt?.otherAllowance || 0,
+  // 月次調整フィールドは連携のたびに0リセット（前月値を誤引継しないため）
+  // 取込後に必要であれば手動で再入力すること
+  otAdjust: 0,
+  basicPayAdjust: 0,
+  otherAllowance: 0,
   hrmosSync: true,
   syncedAt,
 });
@@ -338,6 +340,8 @@ const toSnapshotRowFromCalc = (emp, result, att) => ({
   pension: result.pension || 0, employment: result.employment || 0,
   incomeTax: result.incomeTax || 0, residentTax: result.residentTax || 0,
   yearAdjustment: 0, totalDeduct: result.totalDeduct || 0, net: result.netPay || 0,
+  // 固定上書き設定を記録しておく（給与明細の「固定上書き」表示に使用）
+  incomeTaxOverride: emp.incomeTaxOverride ?? null,
 });
 
 const parseDateLike = (value) => {
@@ -1764,6 +1768,7 @@ const normalizeSnapshotRow = (row) => ({
   yearAdjustment: row.yearAdjustment || 0,
   totalDeduct: row.totalDeduct ?? row.totalDeductions ?? 0,
   net: row.net ?? row.netPay ?? 0,
+  incomeTaxOverride: row.incomeTaxOverride ?? null,
 });
 
 // ===== HistoryPage =====

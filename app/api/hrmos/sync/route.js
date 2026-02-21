@@ -120,11 +120,17 @@ function transformAttendanceData(hrmosData) {
 
   // ユーザーIDごとにグループ化
   const userMap = new Map();
+  const skippedUsers = new Set(); // スキップしたユーザーを重複なく記録
 
   hrmosData.forEach(record => {
     // 社員番号（number）が未設定のユーザーはスキップ
     // → HRMOS上で番号が割り当てられていない仮登録・退職者等を除外する
     if (!record.number || String(record.number).trim() === '') {
+      const key = String(record.user_id);
+      if (!skippedUsers.has(key)) {
+        skippedUsers.add(key);
+        console.log(`[HRMOS Skip] user_id=${record.user_id} name="${record.full_name || record.user_name}" — 社員番号未設定のためスキップ`);
+      }
       return;
     }
 
