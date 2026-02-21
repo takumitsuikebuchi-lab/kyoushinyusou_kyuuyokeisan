@@ -124,6 +124,18 @@ function transformAttendanceData(hrmosData) {
     return [];
   }
 
+  // ===== [DEBUG] 全rawレコードのuser_id・number・氏名を一覧表示 =====
+  console.log(`[DEBUG ALL RECORDS] 総日次レコード数: ${hrmosData.length}件`);
+  const seen = new Set();
+  hrmosData.forEach(record => {
+    const key = `${record.user_id}:${record.number}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      console.log(`[DEBUG USER] user_id=${record.user_id} | number="${record.number}" | name="${record.full_name || record.user_name}"`);
+    }
+  });
+  // ===== [DEBUG END] =====
+
   // ユーザーIDごとにグループ化
   const userMap = new Map();
 
