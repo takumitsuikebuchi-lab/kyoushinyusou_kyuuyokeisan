@@ -837,18 +837,9 @@ const PayrollPage = ({
                   </td>
                   <td className="right mono">{fmt(emp.basicPay)}</td>
                   <td className="right mono">{emp.dutyAllowance ? fmt(emp.dutyAllowance) : "-"}</td>
-                  <td className="right">
-                    <input type="number" step="0.5" value={att.legalOT} className="inline-input"
-                      onChange={(e) => updateAtt(emp.id, "legalOT", e.target.value)} onClick={(e) => e.stopPropagation()} />
-                  </td>
-                  <td className="right">
-                    <input type="number" step="0.5" value={att.prescribedOT} className="inline-input"
-                      onChange={(e) => updateAtt(emp.id, "prescribedOT", e.target.value)} onClick={(e) => e.stopPropagation()} />
-                  </td>
-                  <td className="right">
-                    <input type="number" step="0.5" value={att.nightOT} className="inline-input"
-                      onChange={(e) => updateAtt(emp.id, "nightOT", e.target.value)} onClick={(e) => e.stopPropagation()} />
-                  </td>
+                  <td className="right mono">{att.legalOT > 0 ? `${att.legalOT}h` : "-"}</td>
+                  <td className="right mono">{att.prescribedOT > 0 ? `${att.prescribedOT}h` : "-"}</td>
+                  <td className="right mono">{att.nightOT > 0 ? `${att.nightOT}h` : "-"}</td>
                   <td className="right mono" style={{ fontWeight: 600, color: (r.fixedOvertimePay + r.excessOvertimePay + r.otLegal + r.otPrescribed + r.otNight + r.otHoliday) > 0 ? "#b45309" : "#cbd5e1" }}>
                     {fmt(r.fixedOvertimePay + r.excessOvertimePay + r.otLegal + r.otPrescribed + r.otNight + r.otHoliday)}
                   </td>
@@ -927,19 +918,39 @@ const PayrollPage = ({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 13, marginTop: 8 }}>
                 <div className="detail-row">
                   <span className="label">法定外残業</span>
-                  <span className="value mono">{att.legalOT}h</span>
+                  <span className="value">
+                    <input type="number" step="0.5" className="inline-input" style={{ width: 60 }}
+                      value={att.legalOT} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "legalOT", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>h</span>
+                  </span>
                 </div>
                 <div className="detail-row">
                   <span className="label">所定外残業</span>
-                  <span className="value mono">{att.prescribedOT}h</span>
+                  <span className="value">
+                    <input type="number" step="0.5" className="inline-input" style={{ width: 60 }}
+                      value={att.prescribedOT} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "prescribedOT", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>h</span>
+                  </span>
                 </div>
                 <div className="detail-row">
                   <span className="label">深夜残業</span>
-                  <span className="value mono">{att.nightOT}h</span>
+                  <span className="value">
+                    <input type="number" step="0.5" className="inline-input" style={{ width: 60 }}
+                      value={att.nightOT} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "nightOT", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>h</span>
+                  </span>
                 </div>
                 <div className="detail-row">
                   <span className="label">休日労働</span>
-                  <span className="value mono">{att.holidayOT}h</span>
+                  <span className="value">
+                    <input type="number" step="0.5" className="inline-input" style={{ width: 60 }}
+                      value={att.holidayOT} onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateAtt(emp.id, "holidayOT", e.target.value)} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 2 }}>h</span>
+                  </span>
                 </div>
               </div>
 
