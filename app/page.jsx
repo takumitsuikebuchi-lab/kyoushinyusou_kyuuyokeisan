@@ -13,9 +13,9 @@ import {
 
 // ===== 従業員データ =====
 const INITIAL_EMPLOYEES = [
-  { id: 1, name: "渡会 流雅", dept: "運送事業", jobType: "トラックドライバー", basicPay: 210000, dutyAllowance: 10000, commuteAllow: 0, avgMonthlyHours: 173.0, stdMonthly: 260000, hasKaigo: false, hasPension: true, hasEmployment: true, dependents: 0, residentTax: 13000, isOfficer: false, status: "在籍" },
-  { id: 2, name: "渡曾 羊一", dept: "運送事業", jobType: "トラックドライバー", basicPay: 100000, dutyAllowance: 0, commuteAllow: 0, avgMonthlyHours: 89.1, stdMonthly: 104000, hasKaigo: false, hasPension: false, hasEmployment: false, dependents: 0, residentTax: 0, isOfficer: false, status: "在籍", note: "年金受給者・短時間勤務" },
-  { id: 3, name: "門馬 将太", dept: "運送事業", jobType: "事務経理・労務管理・運行管理", basicPay: 370000, dutyAllowance: 0, commuteAllow: 0, avgMonthlyHours: 173.0, stdMonthly: 380000, hasKaigo: true, hasPension: true, hasEmployment: false, dependents: 0, residentTax: 0, isOfficer: true, status: "在籍", note: "役員（2025年11月〜）" },
+  { id: 1, name: "渡会 流雅", dept: "運送事業", jobType: "トラックドライバー", basicPay: 210000, dutyAllowance: 10000, commuteAllow: 0, avgMonthlyHours: 173.0, stdMonthly: 260000, hasKaigo: false, hasPension: true, hasEmployment: true, dependents: 0, residentTax: 13000, isOfficer: false, status: "在籍", incomeTaxOverride: null },
+  { id: 2, name: "渡曾 羊一", dept: "運送事業", jobType: "トラックドライバー", basicPay: 100000, dutyAllowance: 0, commuteAllow: 0, avgMonthlyHours: 89.1, stdMonthly: 104000, hasKaigo: false, hasPension: false, hasEmployment: false, dependents: 0, residentTax: 0, isOfficer: false, status: "在籍", note: "年金受給者・短時間勤務", incomeTaxOverride: null },
+  { id: 3, name: "門馬 将太", dept: "運送事業", jobType: "事務経理・労務管理・運行管理", basicPay: 370000, dutyAllowance: 0, commuteAllow: 0, avgMonthlyHours: 173.0, stdMonthly: 380000, hasKaigo: true, hasPension: true, hasEmployment: false, dependents: 0, residentTax: 0, isOfficer: true, status: "在籍", note: "役員（2025年11月〜）", incomeTaxOverride: null },
 ];
 
 const INITIAL_ATTENDANCE = {
@@ -1040,7 +1040,7 @@ const PayrollPage = ({
                 [`介護保険（${emp.hasKaigo ? fmt(emp.stdMonthly) + "×" + (rates.kaigo * 100) + "%" : "対象外"})`, r.kaigo],
                 [`厚生年金（${emp.hasPension ? fmt(emp.stdMonthly) + "×" + (rates.pension * 100) + "%" : "対象外"})`, r.pension],
                 [`雇用保険（${emp.hasEmployment ? fmt(r.gross) + "×" + (rates.employment * 100) + "%" : "対象外"})`, r.employment],
-                [`所得税（月額表・甲欄 / 扶養${emp.dependents ?? 0}人）`, r.incomeTax],
+                [`所得税（${emp.incomeTaxOverride != null ? "固定上書き" : `月額表・甲欄 / 扶養${emp.dependents ?? 0}人`}）`, r.incomeTax],
                 ["住民税（特別徴収）", r.residentTax],
               ].map(([label, val], i) => (
                 <div className="detail-row" key={i}>
@@ -1319,6 +1319,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
   const [newCommuteAllow, setNewCommuteAllow] = useState("0");
   const [newStdMonthly, setNewStdMonthly] = useState("260000");
   const [newResidentTax, setNewResidentTax] = useState("0");
+  const [newIncomeTaxOverride, setNewIncomeTaxOverride] = useState("");
   const [newFixedOvertimeHours, setNewFixedOvertimeHours] = useState("0");
   const [newFixedOvertimePay, setNewFixedOvertimePay] = useState("0");
   const [newHasKaigo, setNewHasKaigo] = useState(false);
@@ -1477,11 +1478,12 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
       hasKaigo: newHasKaigo, hasPension: isOfficer ? true : newHasPension, hasEmployment: isOfficer ? false : newHasEmployment,
       dependents: Number(newDependents) || 0, residentTax: Number(newResidentTax) || 0, isOfficer, status: "在籍", leaveDate: "",
       note: `新規追加 (${new Date().toLocaleDateString("ja-JP")})`,
+      incomeTaxOverride: newIncomeTaxOverride !== "" ? Number(newIncomeTaxOverride) : null,
     };
     setEmployees((prev) => [...prev, newEmployee]);
     setAttendance((prev) => ({ ...prev, [nextId]: { ...EMPTY_ATTENDANCE } }));
     setPaidLeaveBalance((prev) => [...prev, { empId: nextId, granted: 10, used: 0, carry: 0 }]);
-    setNewName(""); setNewHrmosEmployeeNumber(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0"); setNewFixedOvertimeHours("0"); setNewFixedOvertimePay("0");
+    setNewName(""); setNewHrmosEmployeeNumber(""); setNewJoinDate(todayStr); setNewEmploymentType("正社員"); setNewDependents("0"); setNewDept(departments[0] || ""); setNewJobType(jobTypes[0] || ""); setNewCommuteAllow("0"); setNewFixedOvertimeHours("0"); setNewFixedOvertimePay("0"); setNewIncomeTaxOverride("");
     setOnboardingMessage(`${newEmployee.name} を登録しました`);
     setShowForm(false);
     if (setChangeLogs) setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "入社", text: `${newEmployee.name} (${newEmployee.employmentType}) を登録` }, ...prev].slice(0, 30));
@@ -1554,6 +1556,7 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
               </select>
             </label>
             <label className="form-label">住民税（月額・円）<input value={newResidentTax} onChange={(e) => setNewResidentTax(e.target.value)} className={onboardingErrors.newResidentTax ? "error" : ""} /></label>
+            <label className="form-label"><Tip label="所得税（固定上書き）">空欄のときは月額税額表（甲欄）で自動計算します。固定額を入力すると毎月その金額を使用します。</Tip><input type="number" min="0" step="1" placeholder="空欄 = 自動計算" value={newIncomeTaxOverride} onChange={(e) => setNewIncomeTaxOverride(e.target.value)} /></label>
           </div>
           <div className="section-divider" style={{ marginTop: 8, marginBottom: 8 }}>固定残業（みなし残業）設定</div>
           <div className="form-grid" style={{ marginBottom: 12 }}>
@@ -1678,6 +1681,20 @@ const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidLeaveBal
                                 {editBuf.stdMonthly > 0 && findGradeByStdMonthly(editBuf.stdMonthly) && <span style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{findGradeByStdMonthly(editBuf.stdMonthly).grade}等級</span>}
                               </label>
                               <label className="form-label">住民税（月額・円）<input type="number" value={editBuf.residentTax} onChange={(e) => updateBufNum("residentTax", e.target.value)} /></label>
+                              <label className="form-label">
+                                <Tip label="所得税（固定上書き）">空欄のときは月額税額表（甲欄）で自動計算します。固定額を入力すると毎月その金額を使用します。</Tip>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  placeholder="空欄 = 自動計算"
+                                  value={editBuf.incomeTaxOverride == null ? "" : editBuf.incomeTaxOverride}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    updateBuf("incomeTaxOverride", v === "" ? null : Number(v));
+                                  }}
+                                />
+                              </label>
                               <label className="form-label">扶養人数<input type="number" min="0" step="1" value={editBuf.dependents} onChange={(e) => updateBufNum("dependents", e.target.value)} /></label>
                               <label className="form-label">月平均所定労働時間<input type="number" step="0.1" value={editBuf.avgMonthlyHours} onChange={(e) => updateBufNum("avgMonthlyHours", e.target.value)} /></label>
                               <label className="form-label">入社日<input type="date" value={editBuf.joinDate || ""} onChange={(e) => updateBuf("joinDate", e.target.value)} /></label>
