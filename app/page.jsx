@@ -3011,6 +3011,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("読込中");
   const lastServerUpdatedAtRef = useRef(null);
   const isSavingRef = useRef(false);
+  const hydratedAtRef = useRef(null); // hydrate完了時刻（直後のauto-save抑制用）
   const [conflictWarning, setConflictWarning] = useState(false);
   const [userEmail, setUserEmail] = useState("");
 
@@ -3096,7 +3097,7 @@ export default function App() {
           setMonthlySnapshots(saved.monthlySnapshots || INITIAL_MONTHLY_SNAPSHOTS);
           setPaidLeaveBalance(saved.paidLeaveBalance || INITIAL_PAID_LEAVE_BALANCE);
           setSettings(mergedSettings);
-          setHrmosSettings(saved.hrmosSettings || INITIAL_HRMOS_SETTINGS);
+          setHrmosSettings({ ...INITIAL_HRMOS_SETTINGS, ...(saved.hrmosSettings || {}) });
           setHrmosSyncPreview(saved.hrmosSyncPreview || null);
           setHrmosUnmatchedRecords(Array.isArray(saved.hrmosUnmatchedRecords) ? saved.hrmosUnmatchedRecords : []);
           setSyncStatus(saved.syncStatus || "");
@@ -3109,7 +3110,12 @@ export default function App() {
           lastServerUpdatedAtRef.current = payload?.updatedAt || null;
         }
       } catch { if (!cancelled) setSaveStatus("ローカル保存未接続"); }
-      finally { if (!cancelled) setIsStateHydrated(true); }
+      finally {
+        if (!cancelled) {
+          hydratedAtRef.current = Date.now();
+          setIsStateHydrated(true);
+        }
+      }
     };
     hydrate();
     return () => { cancelled = true; };
@@ -3119,6 +3125,8 @@ export default function App() {
   useEffect(() => {
     if (!isStateHydrated) return;
     const timer = setTimeout(async () => {
+      // hydrate直後2秒間はauto-saveをスキップ（自分自身との409競合を防ぐ）
+      if (hydratedAtRef.current && Date.now() - hydratedAtRef.current < 2000) return;
       // 保存中なら重複リクエストをスキップ
       if (isSavingRef.current) return;
       isSavingRef.current = true;
@@ -3460,7 +3468,7 @@ export default function App() {
             if (data.monthlySnapshots) setMonthlySnapshots(data.monthlySnapshots);
             if (data.paidLeaveBalance) setPaidLeaveBalance(data.paidLeaveBalance);
             if (data.settings) setSettings({ ...INITIAL_MASTER_SETTINGS, ...data.settings });
-            if (data.hrmosSettings) setHrmosSettings(data.hrmosSettings);
+            if (data.hrmosSettings) setHrmosSettings({ ...INITIAL_HRMOS_SETTINGS, ...data.hrmosSettings });
             setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "復元", text: "バックアップから復元しました" }, ...prev].slice(0, 30));
           }} stateForBackup={{
             employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance,
