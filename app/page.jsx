@@ -634,8 +634,25 @@ const DashboardPage = ({ employees, attendance, payrollMonth, payrollPayDate, pa
   const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
   const totalNet = results.reduce((s, r) => s + r.result.netPay, 0);
 
-  const payDate = parseDateLike(payrollPayDate);
-  const daysUntilPay = Math.max(0, Math.ceil((payDate - new Date()) / 86400000));
+  // 「次の支給日まで」: 設定の支払日（20日）を基準に、今日以降の直近支給日をカレンダーから算出
+  const calcNextPayDate = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const payDay = parsePayDay(settings?.paymentDay || "翌月20日");
+    const nextMonth = isNextMonthPay(settings?.paymentDay || "翌月20日");
+    // 今月の支給日（翌月払い設定なら来月の20日が「今月分の支給日」）
+    const thisMonthPayDate = nextMonth
+      ? new Date(today.getFullYear(), today.getMonth() + 1, payDay)
+      : new Date(today.getFullYear(), today.getMonth(), payDay);
+    // 今日以降なら今月の支給日、過ぎていれば翌月の支給日
+    if (thisMonthPayDate >= today) return thisMonthPayDate;
+    return nextMonth
+      ? new Date(today.getFullYear(), today.getMonth() + 2, payDay)
+      : new Date(today.getFullYear(), today.getMonth() + 1, payDay);
+  };
+  const nextPayDate = calcNextPayDate();
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const daysUntilPay = Math.ceil((nextPayDate - today0) / 86400000);
 
   const sorted = [...monthlyHistory].sort((a, b) => a.month.localeCompare(b.month));
   const prevConfirmed = sorted.filter((m) => m.status === "確定").at(-1);
@@ -662,7 +679,7 @@ const DashboardPage = ({ employees, attendance, payrollMonth, payrollPayDate, pa
         <div className="kpi-item">
           <div className="kpi-item-label">次の支給日まで</div>
           <div><span className="countdown">{daysUntilPay}</span><span className="countdown-unit">日</span></div>
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{formatDateJP(payrollPayDate)}</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{formatDateJP(nextPayDate)}</div>
         </div>
         <div className="kpi-item">
           <div className="kpi-item-label">在籍者数</div>
