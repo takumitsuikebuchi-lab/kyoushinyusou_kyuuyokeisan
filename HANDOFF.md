@@ -1,9 +1,9 @@
 # AI間引き継ぎドキュメント（Handoff）
 
-> **最終更新**: 2026-02-17
-> **最終更新者**: Claude Code
-> **最終コミット**: `7845604` fix: taxYearFromPayMonth を全 calcPayroll 呼出に接続（課題C完了）
-> **ステータス**: 課題C完了。taxYear実接続により2025年支給→R7表、2026年支給→R8表が正しく適用。次は (D) 賞与UI → (E) 年末調整UI → (F) page.jsx分割。
+> **最終更新**: 2026-02-22
+> **最終更新者**: Antigravity
+> **最終コミット**: 運用改善フェーズ1完了: PayrollPage import修正・確定ロック・月次チェックリスト追加
+> **ステータス**: 運用改善フェーズ1完了。次は(D)賞与計算UIまたは(E)年末調整UIの実装。
 
 ---
 
@@ -12,11 +12,13 @@
 > **このセクションは Claude Code / Codex 共通のルールです。作業を開始する前に必ず読んでください。**
 
 ### ルール1: 作業開始時にこのファイルを読む
+
 - 作業を始める前に、まずこの `HANDOFF.md` を最初に読むこと
 - 「2. 現在の状況」を確認し、完了済みの修正を壊さないようにすること
 - 「8. 過去の落とし穴」は必ず目を通す（同じミスを繰り返さないため）
 
 ### ルール2: 作業完了時にこのファイルを更新してコミットする
+
 作業が終わったら（途中であっても中断する場合）、以下を更新してからコミット・プッシュすること：
 
 1. **ヘッダー部分**: `最終更新`, `最終更新者`, `最終コミット`, `ステータス` を更新
@@ -25,6 +27,7 @@
 4. **セクション9「変更履歴」**: 日付・変更内容を1行追加
 
 ### ルール3: 更新フォーマット
+
 ```markdown
 > **最終更新**: YYYY-MM-DD
 > **最終更新者**: [Claude Code / Codex]
@@ -33,17 +36,22 @@
 ```
 
 ### ルール4: コンフリクト防止
+
 - **このファイルの既存の記述を削除しない**（追記のみ）
 - 「完了済み」テーブルの項目は消さない
 - 「落とし穴」は番号を継続して追記する
 
 ### ルール5: 中断時のルール
+
 作業を完了できずに中断する場合：
+
 - 「ステータス」に何の作業中だったかを明記する（例: `workDaysカウントのMF照合中 — segment_titleの分析まで完了`）
 - 残課題テーブルに、中断した作業の具体的な続きを記載する
 
 ### ルール6: AI間同期パケットを必ず残す
+
 作業完了時は、次のAIが最短で着手できるよう、`0. クイックステータス` を更新すること。
+
 - `現在ブランチ`
 - `最新コミット`
 - `次に着手する課題`
@@ -55,8 +63,8 @@
 ## 0. クイックステータス（最短把握）
 
 - 現在ブランチ: `main`
-- 最新コミット: `7845604` fix: taxYearFromPayMonth を全 calcPayroll 呼出に接続（課題C完了）
-- 次に着手する課題: (D) 賞与計算UI → (E) 年末調整UI → (F) page.jsx分割
+- 最新コミット: 運用改嚄フェーズ1: PayrollPage import修正・確定ロック・月次チェックリスト
+- 次に着手する課題: (D) 賞与計算UI または (E) 年末調整UI
 - プレビューURL: `http://localhost:3000`
 - 検証結果: `npm run build` 成功（Next.js 15.5.12）。`npm audit` 脆弱性0件。Middleware 81.9 kB。
 
@@ -75,6 +83,7 @@
 **目的**: `HRMOS勤怠 → 本システム → 給与明細` でマネーフォワードクラウド給与と同一の計算結果を再現する。
 
 ### 技術スタック
+
 - Next.js 15.5.12 (App Router) / React 18
 - 計算ロジック: `lib/payroll-calc.js` に集約（月次・賞与・年末調整・税額表）
 - データ永続化: `data/payroll-state.json` (JSONファイル) / Supabase対応準備済み
@@ -132,6 +141,9 @@
 | app/icon.svg 追加 | ファビコンSVG追加 |
 | supabase/setup.sql 更新 | `audit_log` / `state_history` テーブル定義を追加 |
 | taxYearFromPayMonth 実接続（課題C） | page.jsx 内の全7箇所の `calcPayroll()` 呼出に `{ taxYear: taxYearFromPayMonth(month) }` を追加。`buildInsights` に `payrollMonth` 引数を追加。2025年支給→R7表、2026年支給→R8表が正しく適用される |
+| Vercelデプロイ + Supabase本番セットアップ | vercel.json設定済み、Supabase Auth・DB・バックアップ機能実装済み。既存データ移行完了 |
+| **page.jsx コンポーネント分割（D-1）** | Nav / HistoryPage / LeavePage / AuditLogPanel / BackupPanel を app/components/ に分割。1,625行 → 513行 |
+| 運用改嚄フェーズ1 | ① PayrollPage の taxYearFromPayMonth importを正しい payroll-calc へ修正（ビルド警告解消）。② 確定取消に確認ダイアログ追加。③ 重大チェック時に「確定する」ボタンをブロック。④ 月次作業5ステップチェックリストUI追加。 |
 
 ### 検証結果（渡会流雅 2026年1月）
 
@@ -164,12 +176,8 @@
 
 | 優先度 | ID | 項目 | 詳細 |
 |--------|-----|------|------|
-| **高** | — | Vercelデプロイ | GitHub連携→Vercelプロジェクト作成→環境変数設定（SUPABASE_URL, SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY）→デプロイ |
-| **高** | — | Supabase本番セットアップ | プロジェクト作成→`supabase/setup.sql`実行→Auth設定（セルフサインアップOFF推奨）→ユーザー作成 |
-| **高** | — | 既存データのSupabase移行 | `npm run migrate:state:supabase -- data/payroll-state.json` で既存JSONをSupabaseに移行 |
 | **中** | D | **賞与計算 UI ページ** | `calcBonus()` / `calcBonusTax()` は lib/payroll-calc.js に実装済み。Nav に「賞与」タブ追加、賞与額入力→計算→明細表示の画面を作成 |
 | **中** | E | **年末調整 UI ページ** | `calcYearEndAdjustment()` は lib/payroll-calc.js に実装済み。年間集計→控除入力→過不足精算の画面を作成 |
-| **中** | F | **page.jsx コンポーネント分割** | 3,388行の単一ファイル。`components/` にページコンポーネント（Dashboard, Payroll, Employees, History, Leave, Settings, Bonus, YearEnd）を分離 |
 | **中** | G | **データ定数の lib/ 移動** | `INITIAL_EMPLOYEES`, `INITIAL_ATTENDANCE`, `INITIAL_MASTER_SETTINGS` 等がpage.jsx内に残存。`lib/constants.js` へ移動 |
 | **中** | — | 伊達良幸の正式データ設定 | 仮登録済み（ID: `hrmos_22`）。ユーザーから正式値共有後に基本給・標準報酬・保険を更新する |
 | **低** | J | State管理改善 | App本体のuseState群（20以上）を useReducer/Zustand 等で整理 |
