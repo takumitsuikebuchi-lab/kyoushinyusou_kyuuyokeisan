@@ -1,9 +1,9 @@
 # AI間引き継ぎドキュメント（Handoff）
 
-> **最終更新**: 2026-02-22
+> **最終更新**: 2026-02-24
 > **最終更新者**: Antigravity
-> **最終コミット**: 運用改善フェーズ1完了: PayrollPage import修正・確定ロック・月次チェックリスト追加
-> **ステータス**: 運用改善フェーズ1完了。次は(D)賞与計算UIまたは(E)年末調整UIの実装。
+> **最終コミット**: feat: 入退社ウィザードに書類ダウンロードボタン・アップロードサポート機能を追加
+> **ステータス**: フェーズ0完了（ツール強化）。次はフェーズ1（AIを用いた書類読み取り）または(D)賞与計算UIの実装。
 
 ---
 
@@ -63,10 +63,10 @@
 ## 0. クイックステータス（最短把握）
 
 - 現在ブランチ: `main`
-- 最新コミット: 運用改嚄フェーズ1: PayrollPage import修正・確定ロック・月次チェックリスト
-- 次に着手する課題: (D) 賞与計算UI または (E) 年末調整UI
-- プレビューURL: `http://localhost:3000`
-- 検証結果: `npm run build` 成功（Next.js 15.5.12）。`npm audit` 脆弱性0件。Middleware 81.9 kB。
+- 最新コミット: `feat: 入退社ウィザードに書類ダウンロードボタン・アップロードサポート機能を追加`
+- 次に着手する課題: フェーズ1（AIによる書類解析→自動入力ガイド）または (D) 賞与計算UI
+- プレビューURL: Vercel 本番URL（push 後自動デプロイ）
+- 検証結果: push 済み・Vercel デプロイ済み。ビルドエラーなし確認済み。
 
 ### AI間共通プロトコル（Codex / Cloud Code）
 
@@ -144,6 +144,9 @@
 | Vercelデプロイ + Supabase本番セットアップ | vercel.json設定済み、Supabase Auth・DB・バックアップ機能実装済み。既存データ移行完了 |
 | **page.jsx コンポーネント分割（D-1）** | Nav / HistoryPage / LeavePage / AuditLogPanel / BackupPanel を app/components/ に分割。1,625行 → 513行 |
 | 運用改嚄フェーズ1 | ① PayrollPage の taxYearFromPayMonth importを正しい payroll-calc へ修正（ビルド警告解消）。② 確定取消に確認ダイアログ追加。③ 重大チェック時に「確定する」ボタンをブロック。④ 月次作業5ステップチェックリストUI追加。 |
+| 入退社手続きウィザード追加 | 左ナビに「入退社手続き」タブを追加（`Nav.jsx`）。`OnboardingWizardPage.jsx` を新規作成：入社8ステップ・退社7ステップ。インライン従業員登録フォーム・退職処理UI・プログレスバーを実装。 |
+| 入退社ウィザード ガイド強化（フェーズ0） | 全ステップに「📖 詳細ガイド ▼ 見る」アコーディオン追加。社会保険（⚠️5日以内）・雇用保険（📅翌月10日）・社保喪失（⚠️5日以内）・源泉徴収票（📅翌年1月31日）に期限バッジ追加。e-Gov・ハローワーク・年金事務所等の公式リンク追加。登録フォームの各フィールドに説明文追加。今後のフェーズ1〜3ロードマップ策定。 |
+| 書類ダウンロードボタン・アップロードサポート（フェーズ0.5） | 入社手続きの各ステップに「📥 書類ダウンロード（クリックでPDF取得）」セクションを追加（社保資格取得届・被扶養者届・雇用保険資格取得届・資格喪失届等）。`DocumentUploadPanel.jsx` を新規作成：書類タイプ選択（源泉徴収票・マイナンバー・扶養控除等）→Supabase Storage保存→各欄の「ここにこの数字を入力」レベルの静的ガイドを表示。AIなしで即時利用可能。 |
 
 ### 検証結果（渡会流雅 2026年1月）
 
@@ -390,6 +393,9 @@ curl -s -X POST http://localhost:3000/api/hrmos/sync \
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-02-24 | **書類ダウンロードボタン・アップロードサポート**: 社保資格取得届・被扶養者届・雇用保険資格取得届・社保資格喪失届・雇用保険資格喪失届の書類GuidePanelFormペールを全ステップに追加。`DocumentUploadPanel.jsx` 新規作成：5書類タイプ（源泉徴収票/マイナンバー/扶養控除/履歴書/その他）に対応。Supabase Storageへのアップロード機能と「源泉徴収票の「支払金額」欄をシステムの「住民税月額」欄に入力」レベルの静的ガイド表示機能を実装。 |
+| 2026-02-24 | **入退社ウィザード ガイド強化**: 全ステップに詳細ガイドパネル（アコーディオン）追加。社会保険・雇用保険・資格喪失届・源泉徴収票の提出期限バッジ追加（⚠️赤・📅黄）。e-Gov・ハローワーク・日本年金機構等の公式リンク追加。フォームフィールドに説明文追加。フェーズ1〜3ロードマップ策定。 |
+| 2026-02-24 | **入退社手続きウィザード新規実装**: `Nav.jsx` に入退社タブ追加。`OnboardingWizardPage.jsx` 新規作成（入社8ステップ・退社7ステップ）。`app/page.jsx` に統合。 |
 | 2026-02-17 | **課題C完了: taxYearFromPayMonth 実接続**: page.jsx 内の全7箇所の `calcPayroll()` 呼出に `{ taxYear: taxYearFromPayMonth(month) }` を追加。`buildInsights` に `payrollMonth` 引数を追加。HANDOFF.md のコミットハッシュ `e7c4191` 追記、Next.js 15.5.12 表記統一、セクション5の税額表パラメータ詳細化、落とし穴#18/#31更新。lib/payroll-calc.js の全項目精査完了（R7税表・taxYearFromPayMonth・calcBonus・calcBonusTax・calcYearEndAdjustment — 全てOK） |
 | 2026-02-16 | **大規模リファクタリング**: lib/payroll-calc.js に R7税表・taxYearFromPayMonth・calcBonus・calcBonusTax・calcYearEndAdjustment を追加。page.jsx から lib/ の import に切替。AuditLogPanel・BackupPanel UI 追加。/api/audit・/api/state-history API 新設。Next.js 14.2.35→15.5.12（脆弱性0件）。app/icon.svg・supabase/setup.sql 更新。styles.css に監査ログ/バックアップ用スタイル追加 |
 | 2026-02-16 | Supabase Auth 認証機能追加: `middleware.js`（全ルート保護）、`app/login/page.jsx`（ログインUI）、`lib/supabase-client.js`/`supabase-server.js`（Supabaseクライアント）、`app/api/auth/callback/route.js`（OAuthコールバック） |

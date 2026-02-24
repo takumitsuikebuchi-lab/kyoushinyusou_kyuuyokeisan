@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { DocumentUploadPanel } from "@/app/components/DocumentUploadPanel";
 import { Badge, Card } from "@/app/components/ui";
 import { fmt, fiscalYearFromDate, EMPTY_ATTENDANCE, normalizeHrmosEmployeeNumber, getEmployeeHrmosNumber } from "@/lib/date-utils";
 import { STD_MONTHLY_GRADES } from "@/lib/payroll-calc";
@@ -97,6 +98,18 @@ const ONBOARDING_STEPS = [
                 { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
                 { label: "全国の年金事務所を探す", url: "https://www.nenkin.go.jp/section/soudan/" },
             ],
+            forms: [
+                {
+                    name: "健康保険・厚生年金保険 被保険者資格取得届",
+                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141210.files/1210-11.pdf",
+                    note: "日本年金機構 公式PDF。印刷して記入→年金事務所へ提出",
+                },
+                {
+                    name: "健康保険 被扶養者（異動）届（扶養家族がいる場合）",
+                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141211.files/1211-22.pdf",
+                    note: "扶養に入れる家族がいる場合のみ。上の届と一緒に提出",
+                },
+            ],
         },
     },
     {
@@ -120,6 +133,13 @@ const ONBOARDING_STEPS = [
                 { label: "ハローワーク 雇用保険の手続き", url: "https://www.hellowork.mhlw.go.jp/insurance/insurance_guide.html" },
                 { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
                 { label: "全国のハローワーク", url: "https://www.hellowork.mhlw.go.jp/offices/list.html" },
+            ],
+            forms: [
+                {
+                    name: "雇用保険 被保険者資格取得届",
+                    url: "https://www.hellowork.mhlw.go.jp/doc/koyou_hihokensha_shikaku_shutoku_todoke.pdf",
+                    note: "ハローワーク インターネットサービス 公式PDF",
+                },
             ],
         },
     },
@@ -229,6 +249,13 @@ const OFFBOARDING_STEPS = [
                 { label: "日本年金機構 資格喪失届（記載例）", url: "https://www.nenkin.go.jp/service/kounen/todokesho/" },
                 { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
             ],
+            forms: [
+                {
+                    name: "健康保険・厚生年金保険 被保険者資格喪失届",
+                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141210.files/1210-22.pdf",
+                    note: "日本年金機構 公式PDF。健康保険証と一緒に年金事務所へ提出",
+                },
+            ],
         },
     },
     {
@@ -250,6 +277,18 @@ const OFFBOARDING_STEPS = [
             links: [
                 { label: "ハローワーク 資格喪失届の手続き", url: "https://www.hellowork.mhlw.go.jp/insurance/insurance_guide.html" },
                 { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
+            ],
+            forms: [
+                {
+                    name: "雇用保険 被保険者資格喪失届",
+                    url: "https://www.hellowork.mhlw.go.jp/doc/koyou_hihokensha_shikaku_soshitsu_todoke.pdf",
+                    note: "ハローワーク インターネットサービス 公式PDF",
+                },
+                {
+                    name: "離職証明書（離職票が必要な場合）",
+                    url: "https://www.hellowork.mhlw.go.jp/doc/rishoku_shomeisho.pdf",
+                    note: "退職者が失業給付を申請する場合のみ必要",
+                },
             ],
         },
     },
@@ -383,6 +422,43 @@ const GuidePanel = ({ guide }) => {
                             {link.label}
                         </a>
                     ))}
+                </div>
+            )}
+            {/* 書類ダウンロードセクション */}
+            {guide.forms && guide.forms.length > 0 && (
+                <div style={{ marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#166534", marginBottom: 6 }}>📥 書類ダウンロード（クリックでPDF取得）</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {guide.forms.map((form, i) => (
+                            <a
+                                key={i}
+                                href={form.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ textDecoration: "none" }}
+                            >
+                                <div style={{
+                                    display: "flex", alignItems: "flex-start", gap: 10,
+                                    background: "#f0fdf4", border: "1px solid #86efac",
+                                    borderRadius: 8, padding: "8px 12px",
+                                    transition: "background 0.15s",
+                                    cursor: "pointer",
+                                }}>
+                                    <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: "#15803d" }}>{form.name}</div>
+                                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{form.note}</div>
+                                    </div>
+                                    <div style={{
+                                        flexShrink: 0, fontSize: 11, fontWeight: 600,
+                                        background: "#16a34a", color: "white",
+                                        borderRadius: 5, padding: "2px 8px",
+                                        alignSelf: "center",
+                                    }}>↓ PDF</div>
+                                </div>
+                            </a>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
@@ -801,6 +877,11 @@ export const OnboardingWizardPage = ({
                                                 )}
                                             </>
                                         )}
+                                        {/* 書類アップロード＆入力ガイドパネル（登録前後どちらでも使用可） */}
+                                        <DocumentUploadPanel
+                                            employeeId={registeredEmployee?.id || null}
+                                            employeeName={registeredEmployee?.name || null}
+                                        />
                                     </div>
                                 )}
 
