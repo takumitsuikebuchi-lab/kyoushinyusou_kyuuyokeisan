@@ -39,6 +39,7 @@ import {
 import { DashboardPage } from "@/app/components/DashboardPage";
 import { PayrollPage } from "@/app/components/PayrollPage";
 import { EmployeesPage } from "@/app/components/EmployeesPage";
+import { OnboardingWizardPage } from "@/app/components/OnboardingWizardPage";
 
 // ===== Main App =====
 export default function App() {
@@ -462,6 +463,12 @@ export default function App() {
             settings={settings} payrollTargetMonth={payrollTargetMonth} onRefreshTargetSnapshot={() => onRunAutoCalc(attendance)} />
         )}
         {page === "leave" && <LeavePage employees={employees} paidLeaveBalance={paidLeaveBalance} setPaidLeaveBalance={setPaidLeaveBalance} />}
+        {page === "onboarding" && (
+          <OnboardingWizardPage
+            employees={employees} setEmployees={setEmployees}
+            setAttendance={setAttendance} setPaidLeaveBalance={setPaidLeaveBalance}
+            setChangeLogs={setChangeLogs} settings={settings} setPage={setPage} />
+        )}
         {page === "settings" && <SettingsPage settings={settings} setSettings={setSettings} />}
 
         {/* Activity Log - Collapsible */}
