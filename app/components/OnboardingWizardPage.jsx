@@ -101,12 +101,12 @@ const ONBOARDING_STEPS = [
             forms: [
                 {
                     name: "健康保険・厚生年金保険 被保険者資格取得届",
-                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141210.files/1210-11.pdf",
-                    note: "日本年金機構 公式PDF。印刷して記入→年金事務所へ提出",
+                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141210.html",
+                    note: "日本年金機構 公式ページ。リンク先からPDFをダウンロードし、印刷して記入→年金事務所へ提出",
                 },
                 {
                     name: "健康保険 被扶養者（異動）届（扶養家族がいる場合）",
-                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141211.files/1211-22.pdf",
+                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141211.html",
                     note: "扶養に入れる家族がいる場合のみ。上の届と一緒に提出",
                 },
             ],
@@ -137,8 +137,8 @@ const ONBOARDING_STEPS = [
             forms: [
                 {
                     name: "雇用保険 被保険者資格取得届",
-                    url: "https://www.hellowork.mhlw.go.jp/doc/koyou_hihokensha_shikaku_shutoku_todoke.pdf",
-                    note: "ハローワーク インターネットサービス 公式PDF",
+                    url: "https://www.hellowork.mhlw.go.jp/multiContents/index.html?action=displayContents&screenId=100001000000&contentsType=kourei",
+                    note: "ハローワーク インターネットサービス 書類一覧。リンク先ページ内の「雇用保険被保険者資格取得届」からPDFをダウンロード",
                 },
             ],
         },
