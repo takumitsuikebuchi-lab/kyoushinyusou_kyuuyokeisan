@@ -13,12 +13,32 @@ const ONBOARDING_STEPS = [
         label: "雇用契約書・労働条件通知書の準備・署名",
         kind: "external",
         note: "雇用区分（正社員/嘱託/役員）に応じた書類を準備し、本人のサインをもらいます。",
+        guide: {
+            summary: "入社前または入社当日に必ず実施します。書類は会社と本人各1部保管してください。",
+            items: [
+                "正社員・嘱託：「労働条件通知書」は法律上の交付義務があります（必须）",
+                "役員：「委任契約書」を用意します（雇用契約書ではありません）",
+                "記載必須項目：労働時間、休日、賃金、就業場所、契約期間など",
+                "書類は5年間（旧3年）の保管義務があります",
+            ],
+            links: [],
+        },
     },
     {
         id: "mynumber",
         label: "マイナンバーの収集",
         kind: "external",
         note: "社会保険・税務申告に必要です。マイナンバーカードのコピーまたは通知カード＋身分証を受領します。",
+        guide: {
+            summary: "マイナンバーは社会保険の加入届・年末調整・源泉徴収票の作成に必要です。適切に管理する義務があります。",
+            items: [
+                "マイナンバーカード（表裏）のコピー　または　通知カード＋運転免許証等の身分証のコピー",
+                "収集した書類は施錠できる場所に保管し、目的外利用は禁止です",
+                "扶養家族がいる場合は、家族分のマイナンバーも収集します",
+                "派遣社員・パートも同様に必要です",
+            ],
+            links: [],
+        },
     },
     {
         id: "hrmos_register",
@@ -27,6 +47,16 @@ const ONBOARDING_STEPS = [
         link: "https://ieyasu.co",
         linkLabel: "HRMOSを開く",
         note: "HRMOS勤怠管理システムに新規従業員を追加し、従業員番号（HRMOS連携ID）を控えておいてください。",
+        guide: {
+            summary: "HRMOSへの登録後、表示される「従業員番号」を必ずメモしてください。次のステップで使います。",
+            items: [
+                "HRMOS（ieyasu.co）にログインし、「従業員管理」から「新規追加」",
+                "氏名・入社日・所属・雇用区分を入力して保存",
+                "登録後に表示される「従業員番号（例: 10023）」を控える",
+                "この番号が「HRMOS連携ID」として次のステップで必要になります",
+            ],
+            links: [{ label: "HRMOS勤怠 ログイン", url: "https://ieyasu.co" }],
+        },
     },
     {
         id: "system_register",
@@ -34,24 +64,81 @@ const ONBOARDING_STEPS = [
         kind: "system",
         action: "register",
         note: "HRMOSで確認した従業員番号を使って、このシステムに従業員情報を登録します。",
+        guide: {
+            summary: "「登録フォームを開く」ボタンから必要事項を入力します。不明な項目はテンプレートを使うと便利です。",
+            items: [
+                "HRMOS連携ID：前のステップで控えた従業員番号を入力",
+                "標準報酬月額：基本給＋手当合計をもとに、国の等級表から近い金額を選択（社会保険料計算に使用）",
+                "住民税：前職源泉徴収票や市区町村の通知書に記載の月額を入力（不明な場合は0でOK、後で変更可）",
+                "雇用区分テンプレートを使うと初期値が自動設定されて便利です",
+            ],
+            links: [],
+        },
     },
     {
         id: "shakai_hoken",
         label: "社会保険（健康保険・厚生年金）加入届の提出",
         kind: "external",
+        deadline: "入社日から5日以内",
+        deadlineUrgent: true,
         note: "資格取得日（入社日）から5日以内に年金事務所へ提出します。被扶養者がいる場合は扶養届も一緒に。",
+        guide: {
+            summary: "「被保険者資格取得届」を所轄の年金事務所に提出します。e-Govからオンライン申請もできます。",
+            items: [
+                "書類名：「健康保険・厚生年金保険 被保険者資格取得届」",
+                "提出先：会社所在地を管轄する年金事務所（窓口持参 または 郵送 または e-Gov電子申請）",
+                "必要情報：氏名・生年月日・マイナンバー・入社日・報酬月額（標準報酬月額）",
+                "扶養家族がいる場合は「被扶養者（異動）届」も同時提出",
+                "健康保険証は手続き完了後に事務所から交付されます（数日〜2週間かかることがあります）",
+                "⚠️ 60歳以上・週30時間未満のパートは加入不要の場合あり（要確認）",
+            ],
+            links: [
+                { label: "日本年金機構 資格取得届（記載例）", url: "https://www.nenkin.go.jp/service/kounen/todokesho/" },
+                { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
+                { label: "全国の年金事務所を探す", url: "https://www.nenkin.go.jp/section/soudan/" },
+            ],
+        },
     },
     {
         id: "koyo_hoken",
         label: "雇用保険 資格取得届の提出",
         kind: "external",
+        deadline: "入社月の翌月10日まで",
+        deadlineUrgent: false,
         note: "資格取得日の属する月の翌月10日までにハローワークへ提出します。",
+        guide: {
+            summary: "「雇用保険被保険者資格取得届」をハローワークに提出します。e-Gov からオンライン申請も可能です。",
+            items: [
+                "書類名：「雇用保険被保険者資格取得届」",
+                "提出先：事業所所在地を管轄するハローワーク（窓口 または e-Gov電子申請）",
+                "必要情報：氏名・マイナンバー・入社日・雇用形態・週所定労働時間・賃金",
+                "⚠️ 週所定労働時間が20時間以上かつ31日以上継続見込みの場合に加入義務あり",
+                "役員・個人事業主は原則加入不可",
+                "提出後に「雇用保険被保険者証」が発行されます（新卒初就職は新規発行）",
+            ],
+            links: [
+                { label: "ハローワーク 雇用保険の手続き", url: "https://www.hellowork.mhlw.go.jp/insurance/insurance_guide.html" },
+                { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
+                { label: "全国のハローワーク", url: "https://www.hellowork.mhlw.go.jp/offices/list.html" },
+            ],
+        },
     },
     {
         id: "jumin_tax",
         label: "住民税の特別徴収 切替手続き（前職がある場合）",
         kind: "external",
         note: "前職の会社から「給与所得者異動届出書」を取り寄せ、当社の市区町村へ提出して特別徴収の切り替えを行います。",
+        guide: {
+            summary: "前職がある場合のみ必要です。新卒・初就職・無職期間があった方は不要なことが多いです。",
+            items: [
+                "前職の会社に「給与所得者異動届出書」の作成を依頼し、受け取る",
+                "受け取った書類に当社の情報を記入し、市区町村の税務課へ提出",
+                "手続きが完了すると、翌月以降の住民税が給与から天引きされます",
+                "前職なし・新卒の場合：6月頃に市区町村から通知が来るまでそのまま待つ",
+                "住民税額が変わったら、このシステムの従業員情報画面で「住民税」欄を更新してください",
+            ],
+            links: [],
+        },
     },
     {
         id: "payroll",
@@ -59,6 +146,15 @@ const ONBOARDING_STEPS = [
         kind: "system",
         action: "go_payroll",
         note: "登録後、翌月の給与計算画面で新しい従業員が対象になっているか確認します。",
+        guide: {
+            summary: "「給与計算ページへ」ボタンで遷移し、対象月に新しい従業員が表示されているかを確認してください。",
+            items: [
+                "月次給与計算ページで「対象月」を選択し、従業員が一覧に表示されているか確認",
+                "入社日が月の途中の場合は日割り計算が必要です（勤怠の実労働日数を入力）",
+                "HRMOS連携で勤務データを取り込むと勤怠が自動入力されます",
+            ],
+            links: [],
+        },
     },
 ];
 
@@ -68,6 +164,16 @@ const OFFBOARDING_STEPS = [
         label: "退職日・最終出勤日の確定",
         kind: "input",
         note: "本人・会社双方で合意した退職日を確認します。退職届の受理日も記録しておいてください。",
+        guide: {
+            summary: "退職日は書面（退職届・合意書）で確認します。口頭のみは後でトラブルになるため注意。",
+            items: [
+                "退職届（または合意退職書）を受領し、退職日を書面で確認する",
+                "最終出勤日・有給休暇の消化日数も合わせて確認",
+                "社会保険の資格喪失日は「退職日の翌日」になります（重要）",
+                "給与の締め日・支払い日を確認し、最終給与の計算タイミングを決める",
+            ],
+            links: [],
+        },
     },
     {
         id: "hrmos_offboard",
@@ -76,6 +182,15 @@ const OFFBOARDING_STEPS = [
         link: "https://ieyasu.co",
         linkLabel: "HRMOSを開く",
         note: "HRMOS勤怠管理システムで対象従業員の退職日を入力し、退職処理を行います。",
+        guide: {
+            summary: "HRMOSで退職処理をしないと、勤怠データの取込に影響が出ることがあります。",
+            items: [
+                "HRMOS にログインし、「従業員管理」から対象者を検索",
+                "退職日を入力して退職処理を実行",
+                "最終月の勤怠データが正しく記録されているか確認してから処理する",
+            ],
+            links: [{ label: "HRMOS勤怠 ログイン", url: "https://ieyasu.co" }],
+        },
     },
     {
         id: "system_offboard",
@@ -83,18 +198,60 @@ const OFFBOARDING_STEPS = [
         kind: "system",
         action: "offboard",
         note: "対象従業員を選んで退職処理を実行します。雇用保険が自動でOFFになります。",
+        guide: {
+            summary: "対象者を選んで「退職処理を実行」を押すと、ステータスが「退職」に変わり給与計算対象から外れます。",
+            items: [
+                "対象者を選択し、退職日が正しいことを確認してから実行",
+                "実行後は元に戻せません。必ずHRMOSでの処理が完了してから行ってください",
+                "雇用保険フラグは自動でOFFになります",
+            ],
+            links: [],
+        },
     },
     {
         id: "shakai_loss",
         label: "社会保険 資格喪失届の提出",
         kind: "external",
+        deadline: "退職日翌日から5日以内",
+        deadlineUrgent: true,
         note: "退職日の翌日（資格喪失日）から5日以内に年金事務所へ提出します。健康保険証を回収・返却してください。",
+        guide: {
+            summary: "「被保険者資格喪失届」を年金事務所に提出します。健康保険証の回収も忘れずに。",
+            items: [
+                "書類名：「健康保険・厚生年金保険 被保険者資格喪失届」",
+                "提出先：所轄の年金事務所（窓口 / 郵送 / e-Gov）",
+                "健康保険証を本人から回収して同封します（紛失の場合は「亡失届」が必要）",
+                "資格喪失日は退職日の翌日です（例：3月31日退職 → 喪失日は4月1日）",
+                "扶養家族がいた場合は、家族の保険証も回収します",
+                "退職者が任意継続を希望する場合は、退職後20日以内に本人が年金事務所に手続きします",
+            ],
+            links: [
+                { label: "日本年金機構 資格喪失届（記載例）", url: "https://www.nenkin.go.jp/service/kounen/todokesho/" },
+                { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
+            ],
+        },
     },
     {
         id: "koyo_loss",
         label: "雇用保険 資格喪失届の提出",
         kind: "external",
+        deadline: "退職月の翌々月10日まで",
+        deadlineUrgent: false,
         note: "退職した日の翌々月10日までにハローワークへ提出します。離職票が必要な場合は一緒に申請します。",
+        guide: {
+            summary: "「雇用保険被保険者資格喪失届」をハローワークに提出します。離職票が必要な方には忘れずに発行します。",
+            items: [
+                "書類名：「雇用保険被保険者資格喪失届」",
+                "提出先：所轄のハローワーク（窓口 / e-Gov）",
+                "退職者が失業給付を受けたい場合は「離職票（1・2）」の発行も同時に申請する",
+                "離職票は退職者本人への交付義務があります（請求があった場合）",
+                "手続きが完了すると「雇用保険被保険者資格喪失確認通知書」が交付されます",
+            ],
+            links: [
+                { label: "ハローワーク 資格喪失届の手続き", url: "https://www.hellowork.mhlw.go.jp/insurance/insurance_guide.html" },
+                { label: "e-Gov 電子申請ポータル", url: "https://shinsei.e-gov.go.jp/" },
+            ],
+        },
     },
     {
         id: "final_payroll",
@@ -102,12 +259,37 @@ const OFFBOARDING_STEPS = [
         kind: "system",
         action: "go_payroll",
         note: "最終出勤月の給与を計算・確定します。日割り計算が必要な場合は勤怠を正しく入力してください。",
+        guide: {
+            summary: "月途中退職の場合は日割り計算が必要です。有給消化分の扱いも確認してください。",
+            items: [
+                "月途中退職：当月の実働日数÷所定労働日数×月給 で日割り計算",
+                "有給休暇の残日数を消化している場合は、有給分も含めて計算",
+                "社会保険料：退職月は徴収しない（資格喪失月の保険料は不要）のが原則",
+                "所得税の源泉徴収は通常通り行い、年末調整または退職後の確定申告で精算",
+            ],
+            links: [],
+        },
     },
     {
         id: "gensen",
-        label: "源泉徴収票の発行（翌年1月まで）",
+        label: "源泉徴収票の発行（翌年1月31日まで）",
         kind: "external",
+        deadline: "退職年の翌年1月31日まで",
+        deadlineUrgent: false,
         note: "退職した年の源泉徴収票を、退職者に翌年1月31日までに交付する義務があります。マネーフォワードで発行できます。",
+        guide: {
+            summary: "源泉徴収票の交付は法律上の義務です。中途退職者は翌職場や確定申告で使います。",
+            items: [
+                "交付期限：退職した年の翌年1月31日まで（できれば退職後1ヶ月以内が理想）",
+                "マネーフォワード給与で源泉徴収票を発行できます",
+                "退職者の確定申告・次の会社での年末調整に使います",
+                "従業員の同意がある場合は電子交付（メール添付・PDF送付）も可能",
+                "発行した記録（日付・交付方法）を残しておくことをお勧めします",
+            ],
+            links: [
+                { label: "国税庁 源泉徴収票の交付義務", url: "https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2792.htm" },
+            ],
+        },
     },
 ];
 
@@ -148,6 +330,60 @@ const StepIcon = ({ done, active, kind }) => {
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
                 </svg>
+            )}
+        </div>
+    );
+};
+
+// ===== 詳細ガイドパネル =====
+const GuidePanel = ({ guide }) => {
+    if (!guide) return null;
+    return (
+        <div style={{
+            marginTop: 10,
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: 8,
+            padding: "12px 14px",
+            fontSize: 13,
+            lineHeight: 1.7,
+        }}>
+            {guide.summary && (
+                <div style={{ color: "#1e293b", fontWeight: 600, marginBottom: 8 }}>
+                    {guide.summary}
+                </div>
+            )}
+            {guide.items && guide.items.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: 20, color: "#475569" }}>
+                    {guide.items.map((item, i) => (
+                        <li key={i} style={{ marginBottom: 4 }}>{item}</li>
+                    ))}
+                </ul>
+            )}
+            {guide.links && guide.links.length > 0 && (
+                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {guide.links.map((link, i) => (
+                        <a
+                            key={i}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                                display: "inline-flex", alignItems: "center", gap: 4,
+                                fontSize: 12, color: "#2563eb", textDecoration: "none",
+                                background: "#eff6ff", border: "1px solid #bfdbfe",
+                                borderRadius: 6, padding: "3px 8px",
+                            }}
+                        >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                            </svg>
+                            {link.label}
+                        </a>
+                    ))}
+                </div>
             )}
         </div>
     );
@@ -232,17 +468,30 @@ const InlineRegisterForm = ({ employees, settings, setEmployees, setAttendance, 
         onDone && onDone(emp);
     };
 
+    // 各フィールドのヘルプテキスト
+    const helpText = {
+        hrmosId: "HRMOSで確認した従業員番号（例: 10023）を入力してください",
+        stdMonthly: "基本給＋各種手当の合計をもとに近い等級を選んでください。社会保険料の計算に使用します",
+        residentTax: "前職の源泉徴収票や市区町村の通知書に記載の月額。不明な場合は0でOKです（後で変更できます）",
+        dependents: "配偶者・子など、所得税の扶養に入っている家族の人数（本人を除く）",
+    };
+
     return (
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, marginTop: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: "#1e40af" }}>従業員情報を入力</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: "#1e40af" }}>従業員情報を入力</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+                ❓ 各項目にカーソルを合わせると説明が表示されます。わからない項目は「テンプレ適用」で初期値を設定できます。
+            </div>
             <div className="form-grid" style={{ marginBottom: 10 }}>
                 <label className="form-label">氏名 *
                     <input placeholder="山田 太郎" value={name} onChange={e => setName(e.target.value)} className={errors.name ? "error" : ""} />
                     {errors.name && <span className="error-text">{errors.name}</span>}
                 </label>
-                <label className="form-label">HRMOS連携ID *
+                <label className="form-label" title={helpText.hrmosId}>
+                    HRMOS連携ID *　<span style={{ fontSize: 11, color: "#94a3b8" }}>（HRMOSの従業員番号）</span>
                     <input placeholder="例: 10023" value={hrmosId} onChange={e => setHrmosId(e.target.value)} className={errors.hrmosId ? "error" : ""} />
                     {errors.hrmosId && <span className="error-text">{errors.hrmosId}</span>}
+                    <span style={{ fontSize: 11, color: "#64748b", marginTop: 2, display: "block" }}>{helpText.hrmosId}</span>
                 </label>
                 <label className="form-label">入社日 *
                     <input type="date" value={joinDate} onChange={e => setJoinDate(e.target.value)} />
@@ -264,8 +513,10 @@ const InlineRegisterForm = ({ employees, settings, setEmployees, setAttendance, 
                         {jobTypes.map(j => <option key={j} value={j}>{j}</option>)}
                     </select>
                 </label>
-                <label className="form-label">扶養人数
+                <label className="form-label" title={helpText.dependents}>
+                    扶養人数　<span style={{ fontSize: 11, color: "#94a3b8" }}>（所得税計算用）</span>
                     <input type="number" min="0" step="1" value={dependents} onChange={e => setDependents(e.target.value)} />
+                    <span style={{ fontSize: 11, color: "#64748b", marginTop: 2, display: "block" }}>{helpText.dependents}</span>
                 </label>
                 <label className="form-label">基本給（円）
                     <input type="number" value={basicPay} onChange={e => setBasicPay(e.target.value)} className={errors.basicPay ? "error" : ""} />
@@ -277,22 +528,26 @@ const InlineRegisterForm = ({ employees, settings, setEmployees, setAttendance, 
                 <label className="form-label">通勤手当（円）
                     <input type="number" value={commuteAllow} onChange={e => setCommuteAllow(e.target.value)} />
                 </label>
-                <label className="form-label">標準報酬月額
+                <label className="form-label" title={helpText.stdMonthly}>
+                    標準報酬月額　<span style={{ fontSize: 11, color: "#94a3b8" }}>（社会保険料の計算に使用）</span>
                     <select value={stdMonthly} onChange={e => setStdMonthly(e.target.value)} className={errors.stdMonthly ? "error" : ""}>
                         <option value="">-- 等級を選択 --</option>
                         {STD_MONTHLY_GRADES.map(g => (
                             <option key={g.grade} value={String(g.stdMonthly)}>{g.grade}等級 — ¥{g.stdMonthly.toLocaleString()}</option>
                         ))}
                     </select>
+                    <span style={{ fontSize: 11, color: "#64748b", marginTop: 2, display: "block" }}>{helpText.stdMonthly}</span>
                 </label>
-                <label className="form-label">住民税（月額・円）
+                <label className="form-label" title={helpText.residentTax}>
+                    住民税（月額・円）　<span style={{ fontSize: 11, color: "#94a3b8" }}>（不明なら0でOK）</span>
                     <input type="number" value={residentTax} onChange={e => setResidentTax(e.target.value)} />
+                    <span style={{ fontSize: 11, color: "#64748b", marginTop: 2, display: "block" }}>{helpText.residentTax}</span>
                 </label>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
-                <label className="checkbox-label"><input type="checkbox" checked={hasKaigo} onChange={e => setHasKaigo(e.target.checked)} /> 介護保険</label>
+                <label className="checkbox-label"><input type="checkbox" checked={hasKaigo} onChange={e => setHasKaigo(e.target.checked)} /> 介護保険　<span style={{ fontSize: 11, color: "#94a3b8" }}>（40歳以上）</span></label>
                 <label className="checkbox-label" style={employmentType === "役員" ? { opacity: 0.5 } : {}}>
-                    <input type="checkbox" checked={hasEmployment} disabled={employmentType === "役員"} onChange={e => setHasEmployment(e.target.checked)} /> 雇用保険
+                    <input type="checkbox" checked={hasEmployment} disabled={employmentType === "役員"} onChange={e => setHasEmployment(e.target.checked)} /> 雇用保険　<span style={{ fontSize: 11, color: "#94a3b8" }}>（役員は不可）</span>
                 </label>
                 <label className="checkbox-label"><input type="checkbox" checked={hasPension} onChange={e => setHasPension(e.target.checked)} /> 厚生年金</label>
                 <button className="btn btn-secondary btn-sm" onClick={applyTemplate}>{employmentType}テンプレ適用</button>
@@ -314,6 +569,7 @@ export const OnboardingWizardPage = ({
     const [checked, setChecked] = useState({});
     const [showRegisterForm, setShowRegisterForm] = useState(false);
     const [registeredEmployee, setRegisteredEmployee] = useState(null);
+    const [openGuides, setOpenGuides] = useState({});
     // offboarding
     const [selectedEmpId, setSelectedEmpId] = useState("");
     const [leaveDate, setLeaveDate] = useState(new Date().toISOString().slice(0, 10));
@@ -333,9 +589,11 @@ export const OnboardingWizardPage = ({
         setSelectedEmpId("");
         setLeaveDate(new Date().toISOString().slice(0, 10));
         setOffboardDone(false);
+        setOpenGuides({});
     };
 
     const toggleCheck = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+    const toggleGuide = (id) => setOpenGuides(prev => ({ ...prev, [id]: !prev[id] }));
 
     const handleOffboard = () => {
         if (!selectedEmpId) return;
@@ -359,7 +617,7 @@ export const OnboardingWizardPage = ({
                 <div>
                     <h1 className="page-title">入退社手続き</h1>
                     <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
-                        ステップに従って手続きを進めてください。チェックを入れると完了を記録できます。
+                        ステップに従って手続きを進めてください。「📖 詳細ガイド」を開くと、書類名・提出先・期限などを確認できます。
                     </div>
                 </div>
             </div>
@@ -410,6 +668,7 @@ export const OnboardingWizardPage = ({
                 {steps.map((step, idx) => {
                     const done = Boolean(checked[step.id]);
                     const isActive = !done;
+                    const guideOpen = Boolean(openGuides[step.id]);
 
                     return (
                         <div
@@ -439,7 +698,7 @@ export const OnboardingWizardPage = ({
                                         {step.label}
                                         {step.kind === "system" && <Badge variant="default" style={{ marginLeft: 8, fontSize: 10 }}>システム操作</Badge>}
                                     </div>
-                                    {/* チェックボックス（入力欄・システム操作は自動チェックなのでシステム以外に表示） */}
+                                    {/* チェックボックス */}
                                     {step.kind !== "system" && step.kind !== "input" && (
                                         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0 }}>
                                             <input
@@ -453,11 +712,46 @@ export const OnboardingWizardPage = ({
                                     )}
                                 </div>
 
+                                {/* 期限バッジ */}
+                                {step.deadline && (
+                                    <div style={{ marginTop: 6 }}>
+                                        <span style={{
+                                            display: "inline-flex", alignItems: "center", gap: 4,
+                                            fontSize: 12, fontWeight: 700,
+                                            color: step.deadlineUrgent ? "#dc2626" : "#b45309",
+                                            background: step.deadlineUrgent ? "#fef2f2" : "#fffbeb",
+                                            border: `1px solid ${step.deadlineUrgent ? "#fecaca" : "#fde68a"}`,
+                                            borderRadius: 6, padding: "2px 8px",
+                                        }}>
+                                            {step.deadlineUrgent ? "⚠️" : "📅"} 期限：{step.deadline}
+                                        </span>
+                                    </div>
+                                )}
+
                                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 6, lineHeight: 1.6 }}>
                                     {step.note}
                                 </div>
 
-                                {/* 外部リンク */}
+                                {/* 詳細ガイドボタン */}
+                                {step.guide && (
+                                    <div style={{ marginTop: 8 }}>
+                                        <button
+                                            onClick={() => toggleGuide(step.id)}
+                                            style={{
+                                                display: "inline-flex", alignItems: "center", gap: 5,
+                                                fontSize: 12, color: "#2563eb", background: "none",
+                                                border: "1px solid #bfdbfe", borderRadius: 6,
+                                                padding: "3px 10px", cursor: "pointer",
+                                                transition: "background 0.15s",
+                                            }}
+                                        >
+                                            📖 詳細ガイド {guideOpen ? "▲ 閉じる" : "▼ 見る"}
+                                        </button>
+                                        {guideOpen && <GuidePanel guide={step.guide} />}
+                                    </div>
+                                )}
+
+                                {/* 外部リンク（ステップレベル） */}
                                 {step.link && (
                                     <div style={{ marginTop: 8 }}>
                                         <a href={step.link} target="_blank" rel="noopener noreferrer"
@@ -594,6 +888,7 @@ export const OnboardingWizardPage = ({
                         setSelectedEmpId("");
                         setLeaveDate(new Date().toISOString().slice(0, 10));
                         setOffboardDone(false);
+                        setOpenGuides({});
                     }}
                 >
                     🔄 チェックをリセット
