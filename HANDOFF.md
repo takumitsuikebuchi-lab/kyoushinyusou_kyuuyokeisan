@@ -1,9 +1,9 @@
 # AI間引き継ぎドキュメント（Handoff）
 
-> **最終更新**: 2026-02-24
-> **最終更新者**: Antigravity
-> **最終コミット**: feat: AI書類解析機能を実装（フェーズ1）
-> **ステータス**: フェーズ1完了（Claude Vision APIによる書類解析）。次は(D)賞与計算UIまたはフェーズ2（PDF生成）の実装。
+> **最終更新**: 2026-02-26
+> **最終更新者**: Claude Code (Sonnet 4.6)
+> **最終コミット**: fix: 全体精査によるバグ修正・UI改善・PDF書類追加 (feaef61)
+> **ステータス**: 全体精査完了。重大バグ2件修正済み。次は(D)賞与計算UI または フェーズ2（PDF明細生成）の実装。
 
 ---
 
@@ -63,10 +63,10 @@
 ## 0. クイックステータス（最短把握）
 
 - 現在ブランチ: `main`
-- 最新コミット: `feat: AI書類解析機能を実装（フェーズ1）` (6017da3)
-- 次に着手する課題: (D) 賞与計算UI または フェーズ2（PDF生成）
-- プレビューURL: Vercel 本番URL（push 後自動デプロイ）
-- 検証結果: push 済み・Vercel デプロイ済み。ビルドエラーなし確認済み。
+- 最新コミット: `fix: 全体精査によるバグ修正・UI改善・PDF書類追加` (feaef61)
+- 次に着手する課題: (D) 賞与計算UI または フェーズ2（PDF明細生成）
+- プレビューURL: https://kyoushinyusou-kyuuyokeisan.vercel.app/
+- 検証結果: push 済み・Vercel デプロイ済み。全体精査でバグ2件修正済み。
 
 ### AI間共通プロトコル（Codex / Cloud Code）
 
@@ -386,6 +386,7 @@ curl -s -X POST http://localhost:3000/api/hrmos/sync \
 30. **セルフサインアップは無効にすること** — Supabase Dashboard > Authentication > Providers > Email > "Enable Sign Up" をOFFにしないと誰でもアカウント作成可能になる。招待制運用を想定。
 31. **taxYearFromPayMonth は接続済み** — 全7箇所の `calcPayroll()` 呼出に `{ taxYear: taxYearFromPayMonth(month) }` を追加済み（課題C完了）。`buildInsights` にも `payrollMonth` 引数を追加。
 32. **calcBonus / calcYearEndAdjustment は UI 未実装** — lib/payroll-calc.js にロジックのみ存在。page.jsx にはまだ賞与入力画面・年末調整画面がない。
+33. **コンポーネント分割リファクタ時に toAttendanceFromHrmosRecord が元に戻った** — 2f5ea84 で otAdjust/basicPayAdjust/otherAllowance を0リセットに修正したが、2ae235f の lib/hrmos-matching.js 新規作成時に修正前のコードがコピーされた。分割リファクタ後は該当箇所を必ず確認すること。feaef61 で再修正済み。
 
 ---
 
@@ -393,6 +394,7 @@ curl -s -X POST http://localhost:3000/api/hrmos/sync \
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-02-26 | **全体精査・バグ修正** (feaef61): [重大] `hrmos-matching.js: toAttendanceFromHrmosRecord` のリグレッション修正（コンポーネント分割リファクタ時に otAdjust/basicPayAdjust/otherAllowance が0リセットから prevAtt継承に戻っていた）。[重大] `page.jsx: EmployeesPage` に `monthlySnapshots`/`monthlyHistory` を渡していなかった（算定基礎届の自動計算が常に空データ）。[改善] `document-analyze/route.js`: AIモデルを `claude-opus-4-5` → `claude-sonnet-4-6` に更新。[UI] `EmployeesPage.jsx`: コメント誤字修正。[追加] `public/forms/`: 入退社ウィザード用PDF3件を git 管理下に追加。落とし穴#33を追記。 |
 | 2026-02-24 | **書類ダウンロードボタン・アップロードサポート**: 社保資格取得届・被扶養者届・雇用保険資格取得届・社保資格喪失届・雇用保険資格喪失届の書類GuidePanelFormペールを全ステップに追加。`DocumentUploadPanel.jsx` 新規作成：5書類タイプ（源泉徴収票/マイナンバー/扶養控除/履歴書/その他）に対応。Supabase Storageへのアップロード機能と「源泉徴収票の「支払金額」欄をシステムの「住民税月額」欄に入力」レベルの静的ガイド表示機能を実装。 |
 | 2026-02-24 | **入退社ウィザード ガイド強化**: 全ステップに詳細ガイドパネル（アコーディオン）追加。社会保険・雇用保険・資格喪失届・源泉徴収票の提出期限バッジ追加（⚠️赤・📅黄）。e-Gov・ハローワーク・日本年金機構等の公式リンク追加。フォームフィールドに説明文追加。フェーズ1〜3ロードマップ策定。 |
 | 2026-02-24 | **入退社手続きウィザード新規実装**: `Nav.jsx` に入退社タブ追加。`OnboardingWizardPage.jsx` 新規作成（入社8ステップ・退社7ステップ）。`app/page.jsx` に統合。 |
