@@ -603,29 +603,162 @@ const saveChecked = (obj) => {
     try { localStorage.setItem("wizard_checked", JSON.stringify(obj)); } catch {}
 };
 
+// ===== オンボーディングセッション管理 =====
+const loadSessions = () => {
+    try { return JSON.parse(localStorage.getItem("onboarding_sessions") || "[]"); } catch { return []; }
+};
+const saveSessions = (arr) => {
+    try { localStorage.setItem("onboarding_sessions", JSON.stringify(arr)); } catch {}
+};
+const newSession = (name, joinDate) => ({
+    id: Date.now().toString(),
+    name,
+    joinDate,
+    checked: {},
+    openGuides: getUrgentGuides(ONBOARDING_STEPS),
+    registeredEmpId: null,
+    showRegisterForm: false,
+});
+
+// ===== 届出書記入チェックシート =====
+const FORM_FIELDS = {
+    shakai_hoken: [
+        { label: "被保険者氏名（漢字）",     getValue: (s) => s.name,       hint: "入社する方の氏名（漢字）" },
+        { label: "被保険者氏名（フリガナ）", getValue: () => null,           hint: "カタカナ読み（本人に確認）" },
+        { label: "生年月日",                 getValue: () => null,           hint: "マイナンバー書類か本人に確認" },
+        { label: "性別",                     getValue: () => null,           hint: "本人に確認" },
+        { label: "個人番号（マイナンバー）", getValue: () => null,           hint: "マイナンバーカードの12桁の番号" },
+        { label: "資格取得年月日",           getValue: (s) => s.joinDate,   hint: "入社日をそのまま記入" },
+        { label: "報酬月額",                 getValue: (s, e) => e ? `${((e.basicPay||0)+(e.dutyAllowance||0)+(e.commuteAllow||0)).toLocaleString()}円` : null, hint: "このシステムの従業員情報（基本給＋手当）" },
+        { label: "標準報酬月額",             getValue: (s, e) => e ? `${(e.stdMonthly||0).toLocaleString()}円` : null, hint: "このシステムの従業員情報の「標準報酬月額」" },
+    ],
+    koyo_hoken: [
+        { label: "被保険者氏名（漢字）",     getValue: (s) => s.name,       hint: "入社する方の氏名（漢字）" },
+        { label: "被保険者氏名（フリガナ）", getValue: () => null,           hint: "カタカナ読み（本人に確認）" },
+        { label: "生年月日",                 getValue: () => null,           hint: "マイナンバー書類か本人に確認" },
+        { label: "性別",                     getValue: () => null,           hint: "本人に確認" },
+        { label: "個人番号（マイナンバー）", getValue: () => null,           hint: "マイナンバーカードの12桁の番号" },
+        { label: "資格取得年月日",           getValue: (s) => s.joinDate,   hint: "入社日をそのまま記入" },
+        { label: "雇用形態",                 getValue: (s, e) => e?.employmentType || null, hint: "このシステムの従業員情報の雇用区分" },
+        { label: "1週間の所定労働時間",      getValue: () => "40時間",      hint: "雇用契約書で確認（正社員・ドライバーは通常40時間）" },
+        { label: "賃金月額",                 getValue: (s, e) => e ? `${(e.basicPay||0).toLocaleString()}円` : null, hint: "このシステムの従業員情報の基本給" },
+    ],
+};
+
+const FormFillingGuide = ({ formType, session, employee }) => {
+    const fields = FORM_FIELDS[formType];
+    if (!fields || !session) return null;
+    const knownCount = fields.filter(f => f.getValue(session, employee) !== null).length;
+    return (
+        <div style={{ marginTop: 10, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "12px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
+                    📋 届出書の記入チェックシート
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>
+                    確認済み {knownCount} / {fields.length} 項目
+                </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {fields.map((f, i) => {
+                    const value = f.getValue(session, employee);
+                    return (
+                        <div key={i} style={{ display: "flex", gap: 8, padding: "5px 6px", background: i % 2 === 0 ? "white" : "#fefce8", borderRadius: 4, alignItems: "baseline", flexWrap: "wrap" }}>
+                            <div style={{ minWidth: 190, fontSize: 12, fontWeight: 600, color: "#1e293b", flexShrink: 0 }}>{f.label}</div>
+                            <div style={{ minWidth: 140, fontSize: 12, flexShrink: 0 }}>
+                                {value
+                                    ? <span style={{ color: "#15803d", fontWeight: 700 }}>✓ {value}</span>
+                                    : <span style={{ color: "#b45309", fontWeight: 600 }}>⬜ 要確認</span>
+                                }
+                            </div>
+                            <div style={{ fontSize: 11, color: "#64748b" }}>{f.hint}</div>
+                        </div>
+                    );
+                })}
+            </div>
+            {knownCount < fields.length && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "#92400e" }}>
+                    ⬜ の項目は「受け取り書類アップロード」から書類をアップロードするか、本人に直接確認してください。
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ===== メインコンポーネント =====
 export const OnboardingWizardPage = ({
     employees, setEmployees, setAttendance, setPaidLeaveBalance, setChangeLogs,
     settings, setPage,
 }) => {
-    const [wizardType, setWizardType] = useState(() => localStorage.getItem("wizard_type") || "onboarding");
-    const [checked, setChecked] = useState(loadChecked);
-    const [showRegisterForm, setShowRegisterForm] = useState(false);
-    const [registeredEmployee, setRegisteredEmployee] = useState(null);
-    const [openGuides, setOpenGuides] = useState(() => {
-        const wt = localStorage.getItem("wizard_type") || "onboarding";
-        return getUrgentGuides(wt === "onboarding" ? ONBOARDING_STEPS : OFFBOARDING_STEPS);
-    });
-    // onboarding
     const todayStr = new Date().toISOString().slice(0, 10);
-    const [onboardName, setOnboardName] = useState("");
-    const [onboardJoinDate, setOnboardJoinDate] = useState(todayStr);
-    const [onboardConfirmed, setOnboardConfirmed] = useState(false);
-    // offboarding
+    const [wizardType, setWizardType] = useState(() => localStorage.getItem("wizard_type") || "onboarding");
+
+    // ── onboarding: multi-session ──
+    const [sessions, setSessions] = useState(loadSessions);
+    const [activeSessionId, setActiveSessionId] = useState(() => {
+        const s = loadSessions(); return s[0]?.id || null;
+    });
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [addName, setAddName] = useState("");
+    const [addJoinDate, setAddJoinDate] = useState(todayStr);
+
+    const activeSession = sessions.find(s => s.id === activeSessionId) || null;
+
+    const updateActiveSession = (patch) => {
+        if (!activeSessionId) return;
+        setSessions(prev => {
+            const next = prev.map(s => s.id === activeSessionId ? { ...s, ...patch } : s);
+            saveSessions(next);
+            return next;
+        });
+    };
+    const addSession = (name, joinDate) => {
+        const s = newSession(name.trim(), joinDate);
+        setSessions(prev => { const next = [...prev, s]; saveSessions(next); return next; });
+        setActiveSessionId(s.id);
+        try { localStorage.setItem("active_session_id", s.id); } catch {}
+    };
+    const removeSession = (id) => {
+        setSessions(prev => { const next = prev.filter(s => s.id !== id); saveSessions(next); return next; });
+        setActiveSessionId(prev => prev === id ? (sessions.filter(s => s.id !== id)[0]?.id || null) : prev);
+    };
+
+    // ── offboarding: single session (unchanged) ──
+    const [offChecked, setOffChecked] = useState(loadChecked);
+    const [offOpenGuides, setOffOpenGuides] = useState(() => getUrgentGuides(OFFBOARDING_STEPS));
     const [selectedEmpId, setSelectedEmpId] = useState("");
-    const [leaveDate, setLeaveDate] = useState(new Date().toISOString().slice(0, 10));
+    const [leaveDate, setLeaveDate] = useState(todayStr);
     const [offboardConfirmed, setOffboardConfirmed] = useState(false);
     const [offboardDone, setOffboardDone] = useState(false);
+
+    // ── 統一インターフェース（JSX共通） ──
+    const checked = wizardType === "onboarding" ? (activeSession?.checked || {}) : offChecked;
+    const openGuides = wizardType === "onboarding" ? (activeSession?.openGuides || {}) : offOpenGuides;
+    const registeredEmployee = wizardType === "onboarding" && activeSession?.registeredEmpId
+        ? employees.find(e => String(e.id) === String(activeSession.registeredEmpId)) || null
+        : null;
+    const showRegisterForm = activeSession?.showRegisterForm || false;
+
+    const setChecked = (updater) => {
+        if (wizardType === "onboarding") {
+            setSessions(prev => {
+                const cur = prev.find(s => s.id === activeSessionId);
+                const next_c = typeof updater === "function" ? updater(cur?.checked || {}) : updater;
+                const next = prev.map(s => s.id === activeSessionId ? { ...s, checked: next_c } : s);
+                saveSessions(next); return next;
+            });
+        } else {
+            setOffChecked(prev => {
+                const next = typeof updater === "function" ? updater(prev) : updater;
+                saveChecked(next); return next;
+            });
+        }
+    };
+    const setShowRegisterForm = (val) => {
+        const v = typeof val === "function" ? val(showRegisterForm) : val;
+        updateActiveSession({ showRegisterForm: v });
+    };
+    const setRegisteredEmployee = (emp) => updateActiveSession({ registeredEmpId: emp?.id || null });
 
     const activeEmployees = employees.filter(e => e.status === "在籍");
     const steps = wizardType === "onboarding" ? ONBOARDING_STEPS : OFFBOARDING_STEPS;
@@ -636,26 +769,32 @@ export const OnboardingWizardPage = ({
     // タブ切替時にリセット
     const switchWizard = (type) => {
         try { localStorage.setItem("wizard_type", type); } catch {}
-        const newChecked = {};
-        saveChecked(newChecked);
         setWizardType(type);
-        setChecked(newChecked);
-        setShowRegisterForm(false);
-        setRegisteredEmployee(null);
-        setOnboardName(""); setOnboardJoinDate(new Date().toISOString().slice(0, 10)); setOnboardConfirmed(false);
-        setSelectedEmpId("");
-        setLeaveDate(new Date().toISOString().slice(0, 10));
-        setOffboardConfirmed(false);
-        setOffboardDone(false);
-        setOpenGuides(getUrgentGuides(type === "onboarding" ? ONBOARDING_STEPS : OFFBOARDING_STEPS));
+        if (type === "offboarding") {
+            const reset = {};
+            saveChecked(reset);
+            setOffChecked(reset);
+            setSelectedEmpId("");
+            setLeaveDate(todayStr);
+            setOffboardConfirmed(false);
+            setOffboardDone(false);
+            setOffOpenGuides(getUrgentGuides(OFFBOARDING_STEPS));
+        }
     };
 
-    const toggleCheck = (id) => setChecked(prev => {
-        const next = { ...prev, [id]: !prev[id] };
-        saveChecked(next);
-        return next;
-    });
-    const toggleGuide = (id) => setOpenGuides(prev => ({ ...prev, [id]: !prev[id] }));
+    const toggleCheck = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+    const toggleGuide = (id) => {
+        if (wizardType === "onboarding") {
+            setSessions(prev => {
+                const cur = prev.find(s => s.id === activeSessionId);
+                const next_g = { ...(cur?.openGuides || {}), [id]: !(cur?.openGuides || {})[id] };
+                const next = prev.map(s => s.id === activeSessionId ? { ...s, openGuides: next_g } : s);
+                saveSessions(next); return next;
+            });
+        } else {
+            setOffOpenGuides(prev => ({ ...prev, [id]: !prev[id] }));
+        }
+    };
 
     const handleOffboard = () => {
         if (!selectedEmpId) return;
@@ -716,17 +855,18 @@ export const OnboardingWizardPage = ({
                             style={{ fontSize: 11, padding: "2px 8px" }}
                             onClick={() => {
                                 if (!window.confirm("チェック状態をリセットしますか？")) return;
-                                const newChecked = {};
-                                saveChecked(newChecked);
-                                setChecked(newChecked);
-                                setShowRegisterForm(false);
-                                setRegisteredEmployee(null);
-                                setOnboardName(""); setOnboardJoinDate(new Date().toISOString().slice(0, 10)); setOnboardConfirmed(false);
-                                setSelectedEmpId("");
-                                setLeaveDate(new Date().toISOString().slice(0, 10));
-                                setOffboardConfirmed(false);
-                                setOffboardDone(false);
-                                setOpenGuides(getUrgentGuides(steps));
+                                if (wizardType === "onboarding") {
+                                    updateActiveSession({ checked: {}, showRegisterForm: false, registeredEmpId: null, openGuides: getUrgentGuides(ONBOARDING_STEPS) });
+                                } else {
+                                    const reset = {};
+                                    saveChecked(reset);
+                                    setOffChecked(reset);
+                                    setSelectedEmpId("");
+                                    setLeaveDate(todayStr);
+                                    setOffboardConfirmed(false);
+                                    setOffboardDone(false);
+                                    setOffOpenGuides(getUrgentGuides(OFFBOARDING_STEPS));
+                                }
                             }}
                         >
                             🔄 リセット
@@ -751,67 +891,97 @@ export const OnboardingWizardPage = ({
                 )}
             </div>
 
-            {/* 入社: 対象者を最初に確定 */}
+            {/* 入社: セッションタブ */}
             {wizardType === "onboarding" && (
-                <div style={{ marginBottom: 16, padding: "14px 18px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 10 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#166534", marginBottom: 10 }}>
-                        👤 まず入社する方の情報を入力してください
-                    </div>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                        <input
-                            type="text"
-                            placeholder="氏名（例: 山田 太郎）"
-                            value={onboardName}
-                            onChange={e => { setOnboardName(e.target.value); setOnboardConfirmed(false); }}
-                            disabled={onboardConfirmed}
-                            style={{ padding: "6px 10px", minWidth: 180, fontSize: 13, borderRadius: 6, border: "1px solid #86efac" }}
-                        />
-                        <label style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                            入社日:
-                            <input
-                                type="date"
-                                value={onboardJoinDate}
-                                onChange={e => { setOnboardJoinDate(e.target.value); setOnboardConfirmed(false); }}
-                                disabled={onboardConfirmed}
-                                style={{ padding: "4px 8px" }}
-                            />
-                        </label>
-                        {onboardConfirmed ? (
-                            <button className="btn btn-sm btn-outline" onClick={() => setOnboardConfirmed(false)}>変更する</button>
+                <div style={{ marginBottom: 16 }}>
+                    {/* タブ行 */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+                        {sessions.map(s => {
+                            const prog = Math.round(ONBOARDING_STEPS.filter(st => s.checked?.[st.id]).length / ONBOARDING_STEPS.length * 100);
+                            const isActive = s.id === activeSessionId;
+                            return (
+                                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                                    <button
+                                        onClick={() => { setActiveSessionId(s.id); try { localStorage.setItem("active_session_id", s.id); } catch {} }}
+                                        style={{
+                                            padding: "6px 12px", borderRadius: "8px 0 0 8px",
+                                            border: `2px solid ${isActive ? "#2563eb" : "#e2e8f0"}`,
+                                            borderRight: "none",
+                                            background: isActive ? "#eff6ff" : "white",
+                                            cursor: "pointer", fontSize: 13,
+                                            fontWeight: isActive ? 700 : 400,
+                                            color: isActive ? "#1e40af" : "#374151",
+                                        }}
+                                    >
+                                        👤 {s.name}
+                                        <span style={{ marginLeft: 6, fontSize: 11, color: prog === 100 ? "#16a34a" : "#64748b" }}>{prog}%</span>
+                                    </button>
+                                    <button
+                                        onClick={() => { if (window.confirm(`${s.name}さんの手続きを削除しますか？`)) removeSession(s.id); }}
+                                        style={{
+                                            padding: "6px 8px", borderRadius: "0 8px 8px 0",
+                                            border: `2px solid ${isActive ? "#2563eb" : "#e2e8f0"}`,
+                                            background: isActive ? "#eff6ff" : "white",
+                                            cursor: "pointer", fontSize: 13, color: "#94a3b8",
+                                            lineHeight: 1,
+                                        }}
+                                        title="削除"
+                                    >×</button>
+                                </div>
+                            );
+                        })}
+
+                        {/* 追加フォーム */}
+                        {showAddForm ? (
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px 12px" }}>
+                                <input
+                                    type="text" placeholder="氏名（例: 山田 太郎）" value={addName}
+                                    onChange={e => setAddName(e.target.value)}
+                                    autoFocus
+                                    style={{ padding: "4px 8px", fontSize: 13, borderRadius: 5, border: "1px solid #86efac", minWidth: 160 }}
+                                />
+                                <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+                                    入社日:
+                                    <input type="date" value={addJoinDate} onChange={e => setAddJoinDate(e.target.value)} style={{ padding: "4px 6px" }} />
+                                </label>
+                                <button className="btn btn-sm btn-primary" disabled={!addName.trim()}
+                                    onClick={() => { addSession(addName, addJoinDate); setAddName(""); setShowAddForm(false); }}>
+                                    追加
+                                </button>
+                                <button className="btn btn-sm btn-outline" onClick={() => { setShowAddForm(false); setAddName(""); }}>キャンセル</button>
+                            </div>
                         ) : (
-                            <button
-                                className="btn btn-sm btn-primary"
-                                disabled={!onboardName.trim()}
-                                onClick={() => setOnboardConfirmed(true)}
-                            >確定して手続きを開始</button>
-                        )}
-                        {onboardConfirmed && (
-                            <span style={{ fontSize: 13, color: "#15803d", fontWeight: 600 }}>
-                                ✓ {onboardName}さん / 入社日: {onboardJoinDate}
-                            </span>
+                            <button className="btn btn-sm btn-outline" onClick={() => setShowAddForm(true)}>
+                                ＋ 新しい方を追加
+                            </button>
                         )}
                     </div>
-                    {!onboardConfirmed && (
-                        <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
-                            入力すると、その方に必要な手続きのステップが順番にガイドされます。
+
+                    {/* セッション未選択・空 */}
+                    {sessions.length === 0 && (
+                        <div style={{ background: "#f8fafc", border: "2px dashed #e2e8f0", borderRadius: 10, padding: "32px", textAlign: "center" }}>
+                            <div style={{ fontSize: 14, color: "#64748b", marginBottom: 12 }}>入社手続き中の方がいません</div>
+                            <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>
+                                ＋ 入社手続きを開始する
+                            </button>
                         </div>
                     )}
-                </div>
-            )}
 
-            {/* 入社: 受け取り書類アップロードセクション */}
-            {wizardType === "onboarding" && onboardConfirmed && (
-                <div style={{ marginBottom: 20, padding: "14px 18px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1e40af", marginBottom: 4 }}>
-                        📁 {onboardName}さんから受け取った書類をアップロード
-                    </div>
-                    <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
-                        マイナンバーや源泉徴収票など、受け取った書類を順次アップロードしてください。AIが内容を読み取り、どこに何を入力すればいいかを教えてくれます。
-                    </div>
-                    <DocumentUploadPanel
-                        employeeId={registeredEmployee?.id || null}
-                        employeeName={onboardName}
-                    />
+                    {/* アクティブセッション: 受け取り書類アップロード */}
+                    {activeSession && (
+                        <div style={{ marginBottom: 16, padding: "14px 18px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: "#1e40af", marginBottom: 4 }}>
+                                📁 {activeSession.name}さんから受け取った書類をアップロード
+                            </div>
+                            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+                                マイナンバーや源泉徴収票など、受け取った書類をアップロードしてください。AIが内容を読み取り、どこに何を入力すればいいかを教えてくれます。
+                            </div>
+                            <DocumentUploadPanel
+                                employeeId={registeredEmployee?.id || null}
+                                employeeName={activeSession.name}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -868,7 +1038,8 @@ export const OnboardingWizardPage = ({
             )}
 
             {/* ステップ一覧 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {wizardType === "onboarding" && !activeSession && null}
+            <div style={{ display: wizardType === "onboarding" && !activeSession ? "none" : "flex", flexDirection: "column", gap: 12 }}>
                 {steps.map((step, idx) => {
                     const done = Boolean(checked[step.id]);
                     const isCurrent = idx === currentStepIdx;
@@ -989,6 +1160,9 @@ export const OnboardingWizardPage = ({
                                             📖 詳細ガイド {guideOpen ? "▲ 閉じる" : "▼ 見る"}
                                         </button>
                                         {guideOpen && <GuidePanel guide={step.guide} />}
+                                        {guideOpen && (step.id === "shakai_hoken" || step.id === "koyo_hoken") && wizardType === "onboarding" && (
+                                            <FormFillingGuide formType={step.id} session={activeSession} employee={registeredEmployee} />
+                                        )}
                                     </div>
                                 )}
 
