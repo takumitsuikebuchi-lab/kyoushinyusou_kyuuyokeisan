@@ -5,6 +5,21 @@ export const dynamic = "force-dynamic";
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const hasSupabaseConfig = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+
+/**
+ * スナップショット保存件数の上限。
+ *
+ * 運用方針（2026年2月 策定）:
+ *   - 手動バックアップは月に数回程度を想定。50件 ≒ 約1〜2年分の履歴に相当。
+ *   - 各スナップショットは app_state（数十KB〜数百KB）の全コピーのため、
+ *     Supabase Free プランのストレージ上限（500MB）を圧迫しないよう上限を設けている。
+ *   - 50件を超えた古いスナップショットは自動的に削除される（FIFO）。
+ *
+ * 変更が必要になるケース:
+ *   - 従業員数が大幅に増えてデータサイズが増大した場合 → 削減を検討
+ *   - 長期間の履歴追跡が必要になった場合 → 増加 or Supabase ストレージ有料プランへ移行
+ *   - 環境変数 SUPABASE_STATE_HISTORY_MAX で外部から変更できるようにすることも検討可
+ */
 const MAX_HISTORY = 50;
 
 const supabaseHeaders = (extra = {}) => ({

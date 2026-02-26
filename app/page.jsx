@@ -111,7 +111,11 @@ export default function App() {
           // リロード時は常にダッシュボードから開始（saved.pageは復元しない）
           setEmployees((saved.employees || INITIAL_EMPLOYEES).map((emp) => ({ ...emp, hrmosEmployeeNumber: getEmployeeHrmosNumber(emp) })));
 
-          // attendanceが配列形式の場合、オブジェクト形式に変換
+          // ── [Migration A] attendance: 配列形式 → オブジェクト形式 ──────────────────
+          // 旧フォーマット: attendance = [{ employeeId, workDays, overtimeHours, lateNightHours }, ...]
+          // 新フォーマット: attendance = { [empId]: { workDays, legalOT, nightOT, ... } }
+          // 削除可能条件: Supabase の app_state に配列形式のデータが残っていないことを確認後
+          //   （全従業員分を新形式で一度以上保存すれば移行完了）
           let attendanceData = saved.attendance || INITIAL_ATTENDANCE;
           if (Array.isArray(attendanceData)) {
             const attendanceObj = {};
@@ -126,7 +130,8 @@ export default function App() {
             });
             attendanceData = attendanceObj;
           } else {
-            // 旧オブジェクト形式に不足フィールドがあればEMPTY_ATTENDANCEのデフォルトをマージ
+            // [Migration A-2] オブジェクト形式でも不足フィールドがある旧データにデフォルト補完
+            // 削除可能条件: 上記 Migration A と同じタイミング
             const migrated = {};
             for (const [empId, att] of Object.entries(attendanceData)) {
               migrated[empId] = { ...EMPTY_ATTENDANCE, ...att };
@@ -134,9 +139,14 @@ export default function App() {
             attendanceData = migrated;
           }
           setAttendance(attendanceData);
+
           const mergedSettings = { ...INITIAL_MASTER_SETTINGS, ...(saved.settings || {}) };
-          // マイグレーション: 旧‰値が残っている場合は全料率を自動で%に変換
-          // 判定基準: 厚生年金率が50超なら旧‰形式（%で50超は現実的にありえない）
+
+          // ── [Migration B] 保険料率: 旧‰形式 → %形式 ───────────────────────────────
+          // 旧フォーマット: 料率を ‰（パーミル）で保存していた（例: 厚生年金 = 91.5）
+          // 新フォーマット: 料率を % で保存（例: 厚生年金 = 9.15）
+          // 判定基準: pensionRate が 50 超 → 旧‰形式（% で 50% 超は現実上ありえない）
+          // 削除可能条件: Supabase の app_state に pensionRate > 50 のデータがないことを確認後
           const rateKeys = ["healthRate", "healthRateEmployer", "kaigoRate", "kaigoRateEmployer", "pensionRate", "pensionRateEmployer", "childCareRate", "employmentRate"];
           if (typeof mergedSettings.pensionRate === "number" && mergedSettings.pensionRate > 50) {
             for (const k of rateKeys) {
@@ -145,7 +155,12 @@ export default function App() {
               }
             }
           }
-          // 全行のpayDateを正しく再計算（旧バグで1ヶ月ズレていた値を修正）
+
+          // ── [Migration C] payDate: 旧バグ（1ヶ月ズレ）の修正 ─────────────────────
+          // 旧バグ: payDate が支払月基準ではなく計算月基準で1ヶ月ズレていた
+          // 修正: payDateForPaymentMonth() で全行を再計算して上書き
+          // 削除可能条件: 月次履歴のすべての行が正しい payDate で保存済みと確認できた後
+          //   （現状は毎回再計算するためコストは低いが、将来的には不要になる）
           const rawHistory = saved.monthlyHistory || INITIAL_MONTHLY_HISTORY;
           const fixedHistory = rawHistory.map((row) => ({ ...row, payDate: payDateForPaymentMonth(row.month, mergedSettings.paymentDay) }));
           setMonthlyHistory(upsertMonthHistory(fixedHistory, CURRENT_PROCESSING_MONTH, { payDate: payDateForPaymentMonth(CURRENT_PROCESSING_MONTH, mergedSettings.paymentDay), status: rawHistory.find((m) => m.month === CURRENT_PROCESSING_MONTH)?.status || "未計算" }));

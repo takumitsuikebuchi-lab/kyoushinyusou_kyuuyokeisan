@@ -25,11 +25,13 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
+    const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
 
     const query = new URLSearchParams({
       select: "id,ts,user_email,action,detail",
       order: "ts.desc",
       limit: String(limit),
+      offset: String(offset),
     });
     const url = `${SUPABASE_URL}/rest/v1/audit_log?${query.toString()}`;
     const response = await fetch(url, {
