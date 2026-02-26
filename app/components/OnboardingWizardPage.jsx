@@ -101,13 +101,13 @@ const ONBOARDING_STEPS = [
             forms: [
                 {
                     name: "健康保険・厚生年金保険 被保険者資格取得届",
-                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141210.html",
-                    note: "日本年金機構 公式ページ。リンク先からPDFをダウンロードし、印刷して記入→年金事務所へ提出",
+                    url: "/forms/shakai_hoken_shikaku_shutoku.pdf",
+                    note: "厚生労働省 公式様式（PDF）。印刷して記入し、年金事務所へ提出",
                 },
                 {
                     name: "健康保険 被扶養者（異動）届（扶養家族がいる場合）",
-                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141211.html",
-                    note: "扶養に入れる家族がいる場合のみ。上の届と一緒に提出",
+                    url: "/forms/shakai_hoken_fuyou_ido.pdf",
+                    note: "厚生労働省 公式様式（PDF）。扶養に入れる家族がいる場合のみ。上の届と一緒に提出",
                 },
             ],
         },
@@ -137,8 +137,8 @@ const ONBOARDING_STEPS = [
             forms: [
                 {
                     name: "雇用保険 被保険者資格取得届",
-                    url: "https://www.hellowork.mhlw.go.jp/multiContents/index.html?action=displayContents&screenId=100001000000&contentsType=kourei",
-                    note: "ハローワーク インターネットサービス 書類一覧。リンク先ページ内の「雇用保険被保険者資格取得届」からPDFをダウンロード",
+                    url: "/forms/koyo_hoken_shikaku_shutoku.pdf",
+                    note: "ハローワーク 公式様式（PDF）。印刷して記入し、管轄ハローワーク窓口へ提出",
                 },
             ],
         },
@@ -252,8 +252,8 @@ const OFFBOARDING_STEPS = [
             forms: [
                 {
                     name: "健康保険・厚生年金保険 被保険者資格喪失届",
-                    url: "https://www.nenkin.go.jp/service/kounen/todokesho/hihokensha/20141210.files/1210-22.pdf",
-                    note: "日本年金機構 公式PDF。健康保険証と一緒に年金事務所へ提出",
+                    url: "/forms/shakai_hoken_shikaku_soshitsu.pdf",
+                    note: "厚生労働省 公式様式（PDF）。健康保険証と一緒に年金事務所へ提出",
                 },
             ],
         },
@@ -281,13 +281,13 @@ const OFFBOARDING_STEPS = [
             forms: [
                 {
                     name: "雇用保険 被保険者資格喪失届",
-                    url: "https://www.hellowork.mhlw.go.jp/doc/koyou_hihokensha_shikaku_soshitsu_todoke.pdf",
-                    note: "ハローワーク インターネットサービス 公式PDF",
+                    url: "https://hoken.hellowork.mhlw.go.jp/assist/001000.do?screenId=001000&action=koyohohiSoshitsuLink",
+                    note: "ハローワーク インターネットサービスで作成・印刷（PDFダウンロード不可・オンライン入力後に印刷）",
                 },
                 {
                     name: "離職証明書（離職票が必要な場合）",
-                    url: "https://www.hellowork.mhlw.go.jp/doc/rishoku_shomeisho.pdf",
-                    note: "退職者が失業給付を申請する場合のみ必要",
+                    url: "https://hoken.hellowork.mhlw.go.jp/assist/001000.do?screenId=001000&action=initDisp",
+                    note: "退職者が失業給付を希望する場合のみ必要。PDFダウンロード不可のため、ハローワーク窓口または上記オンラインサービスで作成",
                 },
             ],
         },
