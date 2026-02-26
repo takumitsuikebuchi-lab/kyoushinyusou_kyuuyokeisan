@@ -15,12 +15,12 @@ const ONBOARDING_STEPS = [
         kind: "external",
         note: "雇用区分（正社員/嘱託/役員）に応じた書類を準備し、本人のサインをもらいます。",
         guide: {
-            summary: "入社前または入社当日に必ず実施します。書類は会社と本人各1部保管してください。",
+            summary: "入社前か入社当日に必ず行います。「何時から何時まで働くか」「給料はいくらか」などを書面にして本人に渡す義務があります。会社用・本人用の2部作ってください。",
             items: [
-                "正社員・嘱託：「労働条件通知書」は法律上の交付義務があります（必須）",
-                "役員：「委任契約書」を用意します（雇用契約書ではありません）",
-                "記載必須項目：労働時間、休日、賃金、就業場所、契約期間など",
-                "書類は5年間（旧3年）の保管義務があります",
+                "正社員・嘱託の場合：「労働条件通知書」を必ず渡す（法律で義務付けられています）",
+                "役員の場合：「委任契約書」を用意します（雇用契約書とは別物です）",
+                "書類には「勤務時間・休日・給与・勤務場所」などを記載します",
+                "書類は5年間保管する義務があります",
             ],
             links: [],
         },
@@ -29,14 +29,14 @@ const ONBOARDING_STEPS = [
         id: "mynumber",
         label: "マイナンバーの収集",
         kind: "external",
-        note: "社会保険・税務申告に必要です。マイナンバーカードのコピーまたは通知カード＋身分証を受領します。",
+        note: "社会保険・税の手続きに必要です。マイナンバーカードのコピーか、通知カード＋身分証のコピーを受け取ります。",
         guide: {
-            summary: "マイナンバーは社会保険の加入届・年末調整・源泉徴収票の作成に必要です。適切に管理する義務があります。",
+            summary: "マイナンバー（12桁の番号）は、社会保険の加入手続きや年末調整などで使います。受け取ったコピーは鍵のかかる場所で保管してください。受け取った書類は上の「書類アップロード」からアップロードすると、AIが使い方を教えてくれます。",
             items: [
-                "マイナンバーカード（表裏）のコピー　または　通知カード＋運転免許証等の身分証のコピー",
-                "収集した書類は施錠できる場所に保管し、目的外利用は禁止です",
-                "扶養家族がいる場合は、家族分のマイナンバーも収集します",
-                "派遣社員・パートも同様に必要です",
+                "受け取るもの①：マイナンバーカードのコピー（表と裏）",
+                "受け取るもの②：通知カードのコピー＋運転免許証などの身分証のコピー（カードがない場合）",
+                "扶養家族がいる場合は、家族のマイナンバーも必要です",
+                "受け取ったコピーは厳重に保管してください（目的外の使用は法律で禁止）",
             ],
             links: [],
         },
@@ -47,14 +47,14 @@ const ONBOARDING_STEPS = [
         kind: "external",
         link: "https://ieyasu.co",
         linkLabel: "HRMOSを開く",
-        note: "HRMOS勤怠管理システムに新規従業員を追加し、従業員番号（HRMOS連携ID）を控えておいてください。",
+        note: "勤怠管理システム（HRMOS）に新しい従業員を追加します。登録後に表示される「従業員番号」を必ずメモしてください。",
         guide: {
-            summary: "HRMOSへの登録後、表示される「従業員番号」を必ずメモしてください。次のステップで使います。",
+            summary: "HRMOSは勤怠（出退勤）を管理するシステムです。ここに登録しないと、出退勤のデータが給与計算に反映されません。登録後に表示される数字の番号（例：10023）を手元に控えておいてください。",
             items: [
-                "HRMOS（ieyasu.co）にログインし、「従業員管理」から「新規追加」",
-                "氏名・入社日・所属・雇用区分を入力して保存",
-                "登録後に表示される「従業員番号（例: 10023）」を控える",
-                "この番号が「HRMOS連携ID」として次のステップで必要になります",
+                "「HRMOSを開く」ボタンからログインします",
+                "「従業員管理」→「新規追加」から氏名・入社日・所属を入力して保存",
+                "登録後に表示される「従業員番号」をメモする（次のステップで使います）",
+                "この番号が分からないと次に進めません。必ず控えておいてください",
             ],
             links: [{ label: "HRMOS勤怠 ログイン", url: "https://ieyasu.co" }],
         },
@@ -64,14 +64,14 @@ const ONBOARDING_STEPS = [
         label: "このシステムに従業員を登録",
         kind: "system",
         action: "register",
-        note: "HRMOSで確認した従業員番号を使って、このシステムに従業員情報を登録します。",
+        note: "HRMOSで確認した従業員番号を使って、このシステムに従業員情報を登録します。給与計算に必要な情報をここで設定します。",
         guide: {
-            summary: "「登録フォームを開く」ボタンから必要事項を入力します。不明な項目はテンプレートを使うと便利です。",
+            summary: "「登録フォームを開く」から入力します。難しい項目は「雇用区分テンプレート」を選ぶと自動で埋まります。分からない項目は後から変更できるので、まずは入力できる部分だけで登録してOKです。",
             items: [
-                "HRMOS連携ID：前のステップで控えた従業員番号を入力",
-                "標準報酬月額：基本給＋手当合計をもとに、国の等級表から近い金額を選択（社会保険料計算に使用）",
-                "住民税：前職源泉徴収票や市区町村の通知書に記載の月額を入力（不明な場合は0でOK、後で変更可）",
-                "雇用区分テンプレートを使うと初期値が自動設定されて便利です",
+                "HRMOS連携ID：前のステップでメモした従業員番号を入力",
+                "標準報酬月額：基本給＋手当の合計額に近い金額を選ぶ（社会保険料の計算に使います）",
+                "住民税（月額）：前職の源泉徴収票に記載の金額か、市区町村からの通知書の金額を入力（不明なら0でOK）",
+                "雇用区分テンプレートを使うと、正社員・嘱託・役員ごとに初期値が自動設定されます",
             ],
             links: [],
         },
@@ -82,14 +82,14 @@ const ONBOARDING_STEPS = [
         kind: "external",
         deadline: "入社日から5日以内",
         deadlineUrgent: true,
-        note: "資格取得日（入社日）から5日以内に年金事務所へ提出します。被扶養者がいる場合は扶養届も一緒に。",
+        note: "⚠️ 急ぎ！入社日から5日以内に最寄りの年金事務所へ提出が必要です。",
         guide: {
-            summary: "窓口・郵送・e-Gov 電子申請のいずれかで提出できます。保険証の交付には数日〜2週間かかります。",
+            summary: "健康保険証を発行してもらうための手続きです。下の📄ボタンから書類（PDF）を印刷して記入し、年金事務所に持参か郵送してください。窓口・郵送・e-Gov電子申請が選べます。提出後、保険証が届くまで数日〜2週間かかります。",
             items: [
-                "必要情報：氏名・生年月日・マイナンバー・入社日・標準報酬月額",
-                "標準報酬月額は当システムの従業員情報で設定済みの金額を使用します",
-                "扶養家族がいる場合は「被扶養者（異動）届」を同時提出（下の書類を使用）",
-                "⚠️ 週30時間未満のパート・60歳以上は加入不要の場合あり（要確認）",
+                "書類に記入する内容：氏名・生年月日・マイナンバー・入社日・標準報酬月額（このシステムに登録した金額）",
+                "扶養家族（配偶者や子ども）がいる場合は「被扶養者（異動）届」も一緒に提出します",
+                "⚠️ 週30時間未満のパートや60歳以上の方は、加入不要な場合があります（不明な場合は年金事務所に確認）",
+                "近くの年金事務所は下のリンクから検索できます",
             ],
             links: [
                 { label: "日本年金機構 資格取得届（記載例）", url: "https://www.nenkin.go.jp/service/kounen/todokesho/" },
@@ -116,14 +116,14 @@ const ONBOARDING_STEPS = [
         kind: "external",
         deadline: "入社月の翌月10日まで",
         deadlineUrgent: false,
-        note: "資格取得日の属する月の翌月10日までにハローワークへ提出します。",
+        note: "入社月の翌月10日までにハローワークへ提出します。",
         guide: {
-            summary: "ハローワーク窓口または e-Gov 電子申請で提出します。提出後に「雇用保険被保険者証」が発行されます。",
+            summary: "失業給付などを保障する「雇用保険」に加入するための手続きです。下の📄ボタンから書類を印刷して、最寄りのハローワーク窓口に持参してください（e-Gov電子申請も可）。提出後に「雇用保険被保険者証」が発行されます。",
             items: [
-                "必要情報：氏名・マイナンバー・入社日・雇用形態・週所定労働時間・賃金",
-                "⚠️ 週20時間以上・31日以上継続勤務見込みの方が加入対象",
-                "役員・個人事業主は原則加入不可",
-                "新卒（初就職）は新規発行。前職がある場合は前職の被保険者証番号が必要",
+                "書類に記入する内容：氏名・マイナンバー・入社日・雇用形態・1週間の所定労働時間・給与額",
+                "⚠️ 週20時間以上＋31日以上働く見込みの方が対象です（パートやアルバイトも含みます）",
+                "役員は原則加入できません",
+                "前の職場がある場合は「雇用保険被保険者証」の番号が必要です（本人から受け取ってください）",
             ],
             links: [
                 { label: "ハローワーク 雇用保険の手続き", url: "https://www.hellowork.mhlw.go.jp/insurance/insurance_guide.html" },
@@ -141,16 +141,16 @@ const ONBOARDING_STEPS = [
     },
     {
         id: "jumin_tax",
-        label: "住民税の特別徴収 切替手続き（前職がある場合）",
+        label: "住民税の引き落とし切替（前職がある場合）",
         kind: "external",
-        note: "前職の会社から「給与所得者異動届出書」を取り寄せ、当社の市区町村へ提出して特別徴収の切り替えを行います。",
+        note: "前の会社で給与天引きされていた住民税を、当社での天引きに切り替える手続きです。前職がない場合は不要です。",
         guide: {
-            summary: "前職がある場合のみ必要です。新卒・初就職・無職期間があった方は不要なことが多いです。",
+            summary: "前の職場で住民税が給与から天引き（特別徴収）されていた場合のみ必要な手続きです。前職がない方・新卒の方はこのステップをスキップして「完了」にチェックしてください。",
             items: [
-                "前職の会社に「給与所得者異動届出書」の作成を依頼し、当社情報を記入して税務課へ提出",
-                "手続き完了後、翌月以降の住民税が給与から天引きされます",
-                "前職なし・新卒の場合：6月頃の市区町村通知まで待つ（このステップ不要）",
-                "住民税額が変わったら、従業員情報の「住民税」欄を更新してください",
+                "前職の会社に「給与所得者異動届出書」という書類を作成してもらいます（郵送・メールで依頼してOK）",
+                "届いた書類に当社の情報を追記して、市区町村の税務課に提出します",
+                "手続き後、翌月から住民税が給与から自動で天引きされます",
+                "住民税の月額が分かったら、このシステムの従業員情報「住民税（月額）」欄に入力してください",
             ],
             links: [],
         },
@@ -160,13 +160,13 @@ const ONBOARDING_STEPS = [
         label: "翌月の給与計算に含める",
         kind: "system",
         action: "go_payroll",
-        note: "登録後、翌月の給与計算画面で新しい従業員が対象になっているか確認します。",
+        note: "ここまでの手続きが完了したら、翌月の給与計算画面で新しい従業員が対象に含まれているか確認します。",
         guide: {
-            summary: "「給与計算ページへ」ボタンで遷移し、対象月に新しい従業員が表示されているかを確認してください。",
+            summary: "「給与計算ページへ」ボタンで移動し、新しい従業員の名前が一覧に表示されていれば完了です。初月は入社日が月の途中の場合、日割り計算が必要になります。",
             items: [
-                "月次給与計算ページで「対象月」を選択し、従業員が一覧に表示されているか確認",
-                "入社日が月の途中の場合は日割り計算が必要です（勤怠の実労働日数を入力）",
-                "HRMOS連携で勤務データを取り込むと勤怠が自動入力されます",
+                "給与計算ページで対象月を選択し、新しい従業員が表示されていることを確認",
+                "入社日が月の途中の場合は日割り計算が必要です（実際に働いた日数分だけ計算）",
+                "HRMOSと連携していれば、出退勤データが自動で取り込まれます",
             ],
             links: [],
         },
@@ -616,6 +616,11 @@ export const OnboardingWizardPage = ({
         const wt = localStorage.getItem("wizard_type") || "onboarding";
         return getUrgentGuides(wt === "onboarding" ? ONBOARDING_STEPS : OFFBOARDING_STEPS);
     });
+    // onboarding
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const [onboardName, setOnboardName] = useState("");
+    const [onboardJoinDate, setOnboardJoinDate] = useState(todayStr);
+    const [onboardConfirmed, setOnboardConfirmed] = useState(false);
     // offboarding
     const [selectedEmpId, setSelectedEmpId] = useState("");
     const [leaveDate, setLeaveDate] = useState(new Date().toISOString().slice(0, 10));
@@ -626,6 +631,7 @@ export const OnboardingWizardPage = ({
     const steps = wizardType === "onboarding" ? ONBOARDING_STEPS : OFFBOARDING_STEPS;
     const completedCount = steps.filter(s => checked[s.id]).length;
     const progress = Math.round((completedCount / steps.length) * 100);
+    const currentStepIdx = steps.findIndex(s => !checked[s.id]);
 
     // タブ切替時にリセット
     const switchWizard = (type) => {
@@ -636,6 +642,7 @@ export const OnboardingWizardPage = ({
         setChecked(newChecked);
         setShowRegisterForm(false);
         setRegisteredEmployee(null);
+        setOnboardName(""); setOnboardJoinDate(new Date().toISOString().slice(0, 10)); setOnboardConfirmed(false);
         setSelectedEmpId("");
         setLeaveDate(new Date().toISOString().slice(0, 10));
         setOffboardConfirmed(false);
@@ -714,6 +721,7 @@ export const OnboardingWizardPage = ({
                                 setChecked(newChecked);
                                 setShowRegisterForm(false);
                                 setRegisteredEmployee(null);
+                                setOnboardName(""); setOnboardJoinDate(new Date().toISOString().slice(0, 10)); setOnboardConfirmed(false);
                                 setSelectedEmpId("");
                                 setLeaveDate(new Date().toISOString().slice(0, 10));
                                 setOffboardConfirmed(false);
@@ -742,6 +750,70 @@ export const OnboardingWizardPage = ({
                     </div>
                 )}
             </div>
+
+            {/* 入社: 対象者を最初に確定 */}
+            {wizardType === "onboarding" && (
+                <div style={{ marginBottom: 16, padding: "14px 18px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#166534", marginBottom: 10 }}>
+                        👤 まず入社する方の情報を入力してください
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <input
+                            type="text"
+                            placeholder="氏名（例: 山田 太郎）"
+                            value={onboardName}
+                            onChange={e => { setOnboardName(e.target.value); setOnboardConfirmed(false); }}
+                            disabled={onboardConfirmed}
+                            style={{ padding: "6px 10px", minWidth: 180, fontSize: 13, borderRadius: 6, border: "1px solid #86efac" }}
+                        />
+                        <label style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                            入社日:
+                            <input
+                                type="date"
+                                value={onboardJoinDate}
+                                onChange={e => { setOnboardJoinDate(e.target.value); setOnboardConfirmed(false); }}
+                                disabled={onboardConfirmed}
+                                style={{ padding: "4px 8px" }}
+                            />
+                        </label>
+                        {onboardConfirmed ? (
+                            <button className="btn btn-sm btn-outline" onClick={() => setOnboardConfirmed(false)}>変更する</button>
+                        ) : (
+                            <button
+                                className="btn btn-sm btn-primary"
+                                disabled={!onboardName.trim()}
+                                onClick={() => setOnboardConfirmed(true)}
+                            >確定して手続きを開始</button>
+                        )}
+                        {onboardConfirmed && (
+                            <span style={{ fontSize: 13, color: "#15803d", fontWeight: 600 }}>
+                                ✓ {onboardName}さん / 入社日: {onboardJoinDate}
+                            </span>
+                        )}
+                    </div>
+                    {!onboardConfirmed && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+                            入力すると、その方に必要な手続きのステップが順番にガイドされます。
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* 入社: 受け取り書類アップロードセクション */}
+            {wizardType === "onboarding" && onboardConfirmed && (
+                <div style={{ marginBottom: 20, padding: "14px 18px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1e40af", marginBottom: 4 }}>
+                        📁 {onboardName}さんから受け取った書類をアップロード
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+                        マイナンバーや源泉徴収票など、受け取った書類を順次アップロードしてください。AIが内容を読み取り、どこに何を入力すればいいかを教えてくれます。
+                    </div>
+                    <DocumentUploadPanel
+                        employeeId={registeredEmployee?.id || null}
+                        employeeName={onboardName}
+                    />
+                </div>
+            )}
 
             {/* 退社: 対象者を最初に確定 */}
             {wizardType === "offboarding" && (
@@ -799,6 +871,7 @@ export const OnboardingWizardPage = ({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {steps.map((step, idx) => {
                     const done = Boolean(checked[step.id]);
+                    const isCurrent = idx === currentStepIdx;
                     const isActive = !done;
                     const guideOpen = Boolean(openGuides[step.id]);
 
@@ -809,8 +882,8 @@ export const OnboardingWizardPage = ({
                                 display: "flex",
                                 gap: 14,
                                 padding: "16px 18px",
-                                background: done ? "#f0fdf4" : step.kind === "system" ? "#eff6ff" : "white",
-                                border: `1px solid ${done ? "#86efac" : step.kind === "system" ? "#bfdbfe" : "#e2e8f0"}`,
+                                background: done ? "#f0fdf4" : isCurrent ? "#fefce8" : step.kind === "system" ? "#eff6ff" : "white",
+                                border: `2px solid ${done ? "#86efac" : isCurrent ? "#fbbf24" : step.kind === "system" ? "#bfdbfe" : "#e2e8f0"}`,
                                 borderRadius: 10,
                                 alignItems: "flex-start",
                                 opacity: done ? 0.85 : 1,
@@ -825,6 +898,18 @@ export const OnboardingWizardPage = ({
 
                             {/* Right: content */}
                             <div style={{ flex: 1 }}>
+                                {isCurrent && (
+                                    <div style={{ marginBottom: 6 }}>
+                                        <span style={{
+                                            display: "inline-flex", alignItems: "center", gap: 4,
+                                            fontSize: 11, fontWeight: 700, color: "#92400e",
+                                            background: "#fef3c7", border: "1px solid #fbbf24",
+                                            borderRadius: 5, padding: "2px 8px",
+                                        }}>
+                                            ▶ 今やること
+                                        </span>
+                                    </div>
+                                )}
                                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                                     <div style={{ fontWeight: 700, fontSize: 14, color: done ? "#15803d" : "#1e293b", textDecoration: done ? "line-through" : "none" }}>
                                         {step.label}
@@ -957,11 +1042,6 @@ export const OnboardingWizardPage = ({
                                                 )}
                                             </>
                                         )}
-                                        {/* 書類アップロード＆入力ガイドパネル（登録前後どちらでも使用可） */}
-                                        <DocumentUploadPanel
-                                            employeeId={registeredEmployee?.id || null}
-                                            employeeName={registeredEmployee?.name || null}
-                                        />
                                     </div>
                                 )}
 
