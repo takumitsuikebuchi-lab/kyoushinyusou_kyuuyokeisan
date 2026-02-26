@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
@@ -151,9 +152,17 @@ export async function PUT(req) {
       );
     }
 
-    const userEmail = body._userEmail || null;
+    // Server-side session lookup — never trust client-provided identity
+    let userEmail = null;
+    try {
+      const supabase = getSupabaseServerClient();
+      if (supabase) {
+        const { data: { user } } = await supabase.auth.getUser();
+        userEmail = user?.email || null;
+      }
+    } catch { /* audit is best-effort; never block save */ }
     delete body._expectedUpdatedAt;
-    delete body._userEmail;
+    delete body._userEmail; // remove client-supplied field regardless
 
     const state = {
       version: STATE_VERSION,

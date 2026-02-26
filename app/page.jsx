@@ -22,7 +22,7 @@ import { AuditLogPanel } from "@/app/components/AuditLogPanel";
 import { BackupPanel } from "@/app/components/BackupPanel";
 
 import {
-  pad2, parsePayDay, isNextMonthPay, toIsoDate, processingMonthOf, fiscalYearOf, buildFiscalMonths,
+  pad2, parsePayDay, isNextMonthPay, toIsoDate, fiscalYearOf, buildFiscalMonths,
   monthFullLabel, monthLabel, fiscalYearFromDate, parseDateLike, formatDateJP,
   calcDefaultPayDateByMonth, defaultPayDateStringByMonth, payDateForPaymentMonth, payrollCycleLabel, fmt, money, parseMoney,
   normalizeName, normalizeHrmosEmployeeNumber, getEmployeeHrmosNumber, upsertMonthHistory, nextActionText, EMPTY_ATTENDANCE
@@ -409,12 +409,21 @@ export default function App() {
   const onImportHistoryData = (imports) => {
     setMonthlyHistory((prev) => {
       let next = [...prev];
-      imports.forEach((item) => { next = upsertMonthHistory(next, item.month, { payDate: item.payDate, gross: item.gross, net: item.net, status: "確定", confirmedBy: "CSV取込" }); });
+      let skipped = 0;
+      imports.forEach((item) => {
+        const existing = next.find((r) => r.month === item.month);
+        if (existing?.status === "確定") { skipped++; return; }
+        next = upsertMonthHistory(next, item.month, { payDate: item.payDate, gross: item.gross, net: item.net, status: "確定", confirmedBy: "CSV取込" });
+      });
+      if (skipped > 0) alert(`確定済み月 ${skipped}件 はスキップしました。`);
       return next;
     });
     setMonthlySnapshots((prev) => {
       const next = { ...prev };
-      imports.forEach((item) => { next[item.month] = item.details; });
+      imports.forEach((item) => {
+        const confirmed = monthlyHistory.find((r) => r.month === item.month)?.status === "確定";
+        if (!confirmed) next[item.month] = item.details;
+      });
       return next;
     });
     setChangeLogs((prev) => [{ at: new Date().toISOString(), type: "取込", text: `${imports.length}件のCSVを取り込み` }, ...prev].slice(0, 30));

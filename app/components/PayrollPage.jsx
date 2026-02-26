@@ -16,7 +16,8 @@ export const PayrollPage = ({
     const [selected, setSelected] = useState(null);
     const updateHrmos = (field, value) => setHrmosSettings((prev) => ({ ...prev, [field]: value }));
     const updateAtt = (empId, field, val) => {
-        setAttendance((prev) => ({ ...prev, [empId]: { ...prev[empId], [field]: parseFloat(val) || 0 } }));
+        const num = val === "" ? "" : (parseFloat(val) || 0);
+        setAttendance((prev) => ({ ...prev, [empId]: { ...prev[empId], [field]: num } }));
         onAttendanceChange();
     };
     // 確定を取り消す前に確認ダイアログ（③ 確定月ロック）
