@@ -417,43 +417,6 @@ const GuidePanel = ({ guide }) => {
                     ))}
                 </div>
             )}
-            {/* 書類ダウンロードセクション */}
-            {guide.forms && guide.forms.length > 0 && (
-                <div style={{ marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#166534", marginBottom: 6 }}>📥 書類ダウンロード（クリックでPDF取得）</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {guide.forms.map((form, i) => (
-                            <a
-                                key={i}
-                                href={form.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ textDecoration: "none" }}
-                            >
-                                <div style={{
-                                    display: "flex", alignItems: "flex-start", gap: 10,
-                                    background: "#f0fdf4", border: "1px solid #86efac",
-                                    borderRadius: 8, padding: "8px 12px",
-                                    transition: "background 0.15s",
-                                    cursor: "pointer",
-                                }}>
-                                    <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: 13, fontWeight: 600, color: "#15803d" }}>{form.name}</div>
-                                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{form.note}</div>
-                                    </div>
-                                    <div style={{
-                                        flexShrink: 0, fontSize: 11, fontWeight: 600,
-                                        background: form.isOnline ? "#2563eb" : "#16a34a", color: "white",
-                                        borderRadius: 5, padding: "2px 8px",
-                                        alignSelf: "center",
-                                    }}>{form.isOnline ? "→ 作成" : "↓ PDF"}</div>
-                                </div>
-                            </a>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
