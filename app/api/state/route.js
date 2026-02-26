@@ -144,6 +144,15 @@ export async function GET() {
 
 export async function PUT(req) {
   try {
+    // ── D: ペイロードサイズ上限 10MB ──────────────────────────────────
+    const contentLength = Number(req.headers.get("content-length") || 0);
+    if (contentLength > 10 * 1024 * 1024) {
+      return NextResponse.json(
+        { ok: false, message: "データサイズが上限（10MB）を超えています。" },
+        { status: 413 }
+      );
+    }
+
     const body = await req.json();
     if (!body || typeof body !== "object") {
       return NextResponse.json(
@@ -161,8 +170,48 @@ export async function PUT(req) {
         userEmail = user?.email || null;
       }
     } catch { /* audit is best-effort; never block save */ }
+    // クライアント送信の _expectedUpdatedAt を取り出してから body から除去
+    const expectedUpdatedAt = body._expectedUpdatedAt || null;
     delete body._expectedUpdatedAt;
     delete body._userEmail; // remove client-supplied field regardless
+
+    // ── F+J: Supabase からの現在状態読み取り（楽観的ロック + 確定済み月保護）──
+    if (hasSupabaseConfig) {
+      try {
+        const current = await readStateFromSupabase();
+
+        // ── F: 楽観的ロック — 別タブ競合検出 ──────────────────────────
+        // クライアントが知っている updatedAt と DB の実際の updatedAt を比較
+        if (expectedUpdatedAt && current?.updatedAt && expectedUpdatedAt !== current.updatedAt) {
+          writeAuditLog(userEmail, "conflict",
+            `並行保存競合を検出 (expected: ${expectedUpdatedAt}, actual: ${current.updatedAt})`).catch(() => {});
+          return NextResponse.json(
+            { ok: false, message: "別のタブでデータが更新されました。ページをリロードしてください。", conflict: true },
+            { status: 409 }
+          );
+        }
+
+        // ── J: 確定済み月の改竄防止 ──────────────────────────────────
+        if (Array.isArray(body.monthlyHistory)) {
+          const currentHistory = current?.data?.monthlyHistory || [];
+          for (const confirmed of currentHistory.filter((r) => r.status === "確定")) {
+            const incoming = body.monthlyHistory.find((r) => r.month === confirmed.month);
+            if (incoming && (
+              incoming.gross !== confirmed.gross ||
+              incoming.net !== confirmed.net ||
+              incoming.payDate !== confirmed.payDate
+            )) {
+              writeAuditLog(userEmail, "tamper_attempt",
+                `確定済み月 ${confirmed.month} の改竄を検出`).catch(() => {});
+              return NextResponse.json(
+                { ok: false, message: `確定済み月（${confirmed.month}）のデータは変更できません。` },
+                { status: 403 }
+              );
+            }
+          }
+        }
+      } catch { /* 読み取り失敗時は保存をブロックしない（可用性優先） */ }
+    }
 
     const state = {
       version: STATE_VERSION,

@@ -101,8 +101,11 @@ export async function POST(req) {
       if (countRes.ok) {
         const oldest = await countRes.json();
         if (Array.isArray(oldest) && oldest.length > 0) {
+          // Validate id is a positive integer before interpolating into URL
+          const oldestId = Number(oldest[0].id);
+          if (!Number.isInteger(oldestId) || oldestId <= 0) throw new Error("Invalid snapshot id");
           // Delete all records with id <= oldest
-          const deleteUrl = `${SUPABASE_URL}/rest/v1/state_history?id=lte.${oldest[0].id}`;
+          const deleteUrl = `${SUPABASE_URL}/rest/v1/state_history?id=lte.${oldestId}`;
           await fetch(deleteUrl, {
             method: "DELETE",
             headers: supabaseHeaders(),

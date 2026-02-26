@@ -17,8 +17,15 @@ export async function middleware(request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If Supabase is not configured, allow all (local dev without auth)
+  // Supabase 未設定の場合: ローカル開発のみ許可、本番環境では 503 を返す
   if (!url || !key) {
+    if (process.env.NODE_ENV === "production") {
+      // 本番でSupabaseが未設定 → 設定ミスによる全データ露出を防ぐ
+      return NextResponse.json(
+        { ok: false, message: "サービス設定エラーです。管理者にお問い合わせください。" },
+        { status: 503 }
+      );
+    }
     return NextResponse.next();
   }
 

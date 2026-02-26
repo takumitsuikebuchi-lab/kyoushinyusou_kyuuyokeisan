@@ -15,8 +15,14 @@ export const PayrollPage = ({
 }) => {
     const [selected, setSelected] = useState(null);
     const updateHrmos = (field, value) => setHrmosSettings((prev) => ({ ...prev, [field]: value }));
+    // 日数・時間系フィールドは負の数を許容しない（調整額フィールドは符号あり許容）
+    const NON_NEGATIVE_FIELDS = new Set([
+        "workDays", "scheduledDays", "workHours", "scheduledHours",
+        "legalOT", "prescribedOT", "nightOT", "holidayOT",
+    ]);
     const updateAtt = (empId, field, val) => {
-        const num = val === "" ? "" : (parseFloat(val) || 0);
+        let num = val === "" ? "" : (parseFloat(val) || 0);
+        if (typeof num === "number" && NON_NEGATIVE_FIELDS.has(field)) num = Math.max(0, num);
         setAttendance((prev) => ({ ...prev, [empId]: { ...prev[empId], [field]: num } }));
         onAttendanceChange();
     };
@@ -38,6 +44,12 @@ export const PayrollPage = ({
     const titleStatus = isAttendanceDirty ? "計算中" : payrollStatus;
     const activeEmployees = employees.filter((e) => e.status === "在籍");
 
+    // CSV インジェクション対策: =, +, -, @, タブ, 改行で始まるセルに ' を付与
+    const safeCsv = (val) => {
+        const s = String(val ?? "");
+        return /^[=+\-@\t\r\n]/.test(s) ? `'${s}` : s;
+    };
+
     const exportCsv = () => {
         const headers = [
             "社員番号", "氏名", "基本給", "職務手当", "通勤手当",
@@ -48,7 +60,7 @@ export const PayrollPage = ({
             "会社負担健保", "会社負担介護", "会社負担厚年", "会社負担子育て", "会社負担雇保", "会社負担計"
         ];
         const rows = results.map(({ emp, att, result: r }) => [
-            emp.id, emp.name, emp.basicPay, emp.dutyAllowance, emp.commuteAllow,
+            safeCsv(emp.id), safeCsv(emp.name), emp.basicPay, emp.dutyAllowance, emp.commuteAllow,
             att.legalOT || 0, att.prescribedOT || 0, att.nightOT || 0, att.holidayOT || 0,
             r.otLegal + r.otPrescribed + r.otNight + r.otHoliday + r.fixedOvertimePay + r.excessOvertimePay,
             att.basicPayAdjust || 0, att.otAdjust || 0, att.otherAllowance || 0,
@@ -56,7 +68,7 @@ export const PayrollPage = ({
             r.socialTotal, r.incomeTax, r.residentTax, r.totalDeduct, r.netPay,
             r.erHealth, r.erKaigo, r.erPension, r.erChildCare, r.erEmployment, r.erTotal
         ]);
-        const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
+        const csvContent = [headers, ...rows].map(row => row.map(safeCsv).join(",")).join("\n");
         // UTF-8 BOM付きで文字化け防止
         const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);

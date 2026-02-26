@@ -63,6 +63,8 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("読込中");
   const isSavingRef = useRef(false);
   const hydratedAtRef = useRef(null); // hydrate完了時刻（直後のauto-save抑制用）
+  const serverUpdatedAtRef = useRef(null); // サーバーが返した最終updatedAt（楽観的ロック用）
+  const [hasConflict, setHasConflict] = useState(false); // 並行タブ競合フラグ
   const [userEmail, setUserEmail] = useState("");
 
   // Fetch logged-in user email
@@ -159,6 +161,8 @@ export default function App() {
           setChangeLogs(Array.isArray(saved.changeLogs) ? saved.changeLogs : []);
         }
         if (!cancelled) {
+          // 最終更新日時を記録（楽観的ロックで並行タブ競合を検出するために使用）
+          serverUpdatedAtRef.current = payload?.updatedAt || null;
           setSaveStatus("保存済み");
         }
       } catch { if (!cancelled) setSaveStatus("ローカル保存未接続"); }
@@ -201,10 +205,21 @@ export default function App() {
             calcStatus,
             isAttendanceDirty,
             changeLogs,
-            _userEmail: userEmail || null,
+            // 楽観的ロック: 最後に取得したサーバーのupdatedAtを送信
+            _expectedUpdatedAt: serverUpdatedAtRef.current,
           }),
         });
+        if (res.status === 409) {
+          // 別タブから先に保存された — ページリロードを促す
+          setHasConflict(true);
+          setSaveStatus("競合 - 要リロード");
+          return;
+        }
         if (!res.ok) throw new Error("failed");
+        const saved = await res.json();
+        // 成功したら最新のupdatedAtを更新
+        if (saved?.updatedAt) serverUpdatedAtRef.current = saved.updatedAt;
+        setHasConflict(false);
         setSaveStatus("保存済み");
       } catch { setSaveStatus("保存失敗"); }
       finally { isSavingRef.current = false; }
@@ -433,6 +448,14 @@ export default function App() {
     <div className="app-layout">
       <Nav page={page} setPage={setPage} userEmail={userEmail} />
       <main className="app-main">
+        {/* 並行タブ競合バナー */}
+        {hasConflict && (
+          <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 6, padding: "10px 16px", margin: "8px 0", display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
+            <span>⚠️</span>
+            <span style={{ flex: 1 }}>別のタブまたは端末でデータが更新されました。このタブの変更は保存されていません。</span>
+            <button onClick={() => window.location.reload()} style={{ background: "#f59e0b", color: "#fff", border: "none", borderRadius: 4, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>リロードして最新を表示</button>
+          </div>
+        )}
         {/* Compact Status Bar */}
         <div className="status-bar">
           <span className={`status-dot ${statusDotClass}`} />
