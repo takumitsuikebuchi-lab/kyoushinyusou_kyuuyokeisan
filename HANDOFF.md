@@ -1,9 +1,9 @@
 # AI間引き継ぎドキュメント（Handoff）
 
-> **最終更新**: 2026-02-26
+> **最終更新**: 2026-02-27
 > **最終更新者**: Claude Code (Sonnet 4.6)
-> **最終コミット**: feat: 政府届出書をローカルホスティングに変更 (7e4bffc)
-> **ステータス**: 入退社ウィザードの書類リンクを安定化完了。次は(D)賞与計算UI または フェーズ2（PDF明細生成）の実装。
+> **最終コミット**: 中期品質改善: 税率定数の年度注釈・移行コード整理・監査ログページネーション・スナップショット保存方針 (0f58723)
+> **ステータス**: セキュリティ監査（CRITICAL〜LOW全項目）および中期品質改善（M/N/P/Q）が完全完了。次は(D)賞与計算UI または (E)年末調整UI。
 
 ---
 
@@ -63,10 +63,20 @@
 ## 0. クイックステータス（最短把握）
 
 - 現在ブランチ: `main`
-- 最新コミット: `feat: 政府届出書をローカルホスティングに変更` (7e4bffc)
-- 次に着手する課題: (D) 賞与計算UI または フェーズ2（PDF明細生成）
+- 最新コミット: `0f58723` 中期品質改善（税率定数年度注釈・移行コード整理・監査ログページネーション・スナップショット方針）
+- 次に着手する課題: **(D) 賞与計算UI** または **(E) 年末調整UI**（どちらも lib/payroll-calc.js にロジック実装済み）
 - プレビューURL: https://kyoushinyusou-kyuuyokeisan.vercel.app/
-- 検証結果: push 済み・Vercel デプロイ済み。全体精査でバグ2件修正済み。
+- 検証結果: セキュリティ監査・全リスク解消済み（CRITICAL/HIGH/MEDIUM/LOW 全件）。push 済み。
+
+### セキュリティ状態サマリー（2026-02-27時点）
+
+| リスクレベル | 件数 | 状態 |
+|-------------|------|------|
+| CRITICAL | 3件 | ✅ 解消済み |
+| HIGH | 2件 | ✅ 解消済み（Supabase RLS + テーブル作成） |
+| MEDIUM | 4件 | ✅ 解消済み |
+| LOW | 1件 | ✅ 解消済み |
+| **残存リスク** | **0件** | ✅ |
 
 ### AI間共通プロトコル（Codex / Cloud Code）
 
@@ -148,6 +158,30 @@
 | 入退社ウィザード ガイド強化（フェーズ0） | 全ステップに「📖 詳細ガイド ▼ 見る」アコーディオン追加。社会保険（⚠️5日以内）・雇用保険（📅翌月10日）・社保喪失（⚠️5日以内）・源泉徴収票（📅翌年1月31日）に期限バッジ追加。e-Gov・ハローワーク・年金事務所等の公式リンク追加。登録フォームの各フィールドに説明文追加。今後のフェーズ1〜3ロードマップ策定。 |
 | 書類ダウンロードボタン・アップロードサポート（フェーズ0.5） | 入社手続きの各ステップに「📥 書類ダウンロード（クリックでPDF取得）」セクションを追加（社保資格取得届・被扶養者届・雇用保険資格取得届・資格喪失届等）。`DocumentUploadPanel.jsx` を新規作成：書類タイプ選択（源泉徴収票・マイナンバー・扶養控除等）→Supabase Storage保存→各欄の「ここにこの数字を入力」レベルの静的ガイドを表示。AIなしで即時利用可能。 |
 | **政府届出書ローカルホスティング化** | nenkin.go.jp / hellowork.mhlw.go.jp の不安定リンクを廃止。社保3様式（資格取得届・被扶養者異動届・資格喪失届）を mhlw.go.jp から DL して `public/forms/` に収録。雇保資格取得届は既存PDFを維持。雇保資格喪失届・離職証明書はPDFダウンロード不可のため ハローワーク インターネットサービス（hoken.hellowork.mhlw.go.jp）の安定URLに更新。 |
+| **セキュリティ監査 CRITICAL〜LOW 全件対応** | コード修正10件 + Supabase設定2件の計12件。詳細は下記「セキュリティ修正詳細」を参照 |
+| **中期品質改善 M/N/P/Q 全件完了** | 税率定数年度注釈・移行コード削除条件整備・監査ログページネーション・スナップショット保存方針策定 |
+
+### セキュリティ修正詳細（2026-02-27 完了）
+
+コミット `013f254`・`f73a9b7`・`0f58723` に分けて対応済み。
+
+| ID | リスク | 修正内容 | ファイル |
+|----|--------|----------|---------|
+| A | `_userEmail` クライアント送信 | ペイロードから削除。サーバーで `supabase.auth.getUser()` により取得 | `app/page.jsx` |
+| B | `avgMonthlyHours` ÷ 0 | `> 0` ガードで `Infinity/NaN` を防止 | `lib/payroll-calc.js` |
+| C | `state_history` id サニタイズ不足 | `Number.isInteger && > 0` チェック追加 | `api/state-history/route.js` |
+| D | ペイロードサイズ無制限 | `Content-Length > 10MB` で 413 を返す | `api/state/route.js` |
+| E | 本番 Supabase 未設定時の全公開 | `NODE_ENV === "production"` で 503 を返す | `middleware.js` |
+| F | 別タブ並行保存の競合 | 楽観的ロック（`expectedUpdatedAt` vs DB の `updatedAt` 不一致 → 409）| `api/state/route.js`, `app/page.jsx` |
+| H/I | 勤怠フィールド負値・stdMonthly ゼロ | `NON_NEGATIVE_FIELDS` でクランプ。`stdMonthly > 0` ガード追加 | `app/components/PayrollPage.jsx`, `lib/payroll-calc.js` |
+| J | 確定済み月の改竄 | サーバー側で `gross/net/payDate` 不変チェック → 403 + 監査ログ | `api/state/route.js` |
+| CSV | CSV インジェクション | `safeCsv()` でセル先頭の `=+-@` を `'` でエスケープ | `app/components/PayrollPage.jsx` |
+| Supabase-DB | `audit_log`/`state_history` 未作成 | Supabase SQL で両テーブルを作成（IDENTITY PK, `timestamptz`） | Supabase Dashboard |
+| Supabase-RLS | 全テーブル RLS 未設定 | 3テーブル全て `auth.role() = 'authenticated'` ポリシーを適用 | Supabase Dashboard |
+| M | 税率定数に年度情報なし | `estimateTax` JSDoc に ⚠️ 毎年要確認ブロック・各定数に R7/R8 値を並記 | `lib/payroll-calc.js` |
+| N | 移行コード削除条件未記録 | `[Migration A/B/C]` ラベルと削除可能条件を各ブロックに追記 | `app/page.jsx` |
+| P | 監査ログが 50件固定 | offset ベースのページネーション + 「さらに読み込む」ボタン実装 | `AuditLogPanel.jsx`, `api/audit/route.js` |
+| Q | スナップショット保存方針未記述 | `MAX_HISTORY=50` の根拠・変更判断基準を JSDoc で整備 | `api/state-history/route.js` |
 
 ### 検証結果（渡会流雅 2026年1月）
 
@@ -180,9 +214,11 @@
 
 | 優先度 | ID | 項目 | 詳細 |
 |--------|-----|------|------|
+| **高** | — | **2027年分税額表（令和9年）の追加** | `lib/payroll-calc.js` の ⚠️ コメント箇所を確認し、`TAX_TABLE_R9` を追加（毎年4月施行）。`estimateTax` の `useR7` 分岐を拡張すること |
 | **中** | D | **賞与計算 UI ページ** | `calcBonus()` / `calcBonusTax()` は lib/payroll-calc.js に実装済み。Nav に「賞与」タブ追加、賞与額入力→計算→明細表示の画面を作成 |
 | **中** | E | **年末調整 UI ページ** | `calcYearEndAdjustment()` は lib/payroll-calc.js に実装済み。年間集計→控除入力→過不足精算の画面を作成 |
 | **中** | G | **データ定数の lib/ 移動** | `INITIAL_EMPLOYEES`, `INITIAL_ATTENDANCE`, `INITIAL_MASTER_SETTINGS` 等がpage.jsx内に残存。`lib/constants.js` へ移動 |
+| **中** | — | **移行コードの将来削除** | `app/page.jsx` の `[Migration A/B/C]` ブロックは各コメントの「削除可能条件」を満たした時点で削除する。現時点は保留 |
 | **中** | — | 伊達良幸の正式データ設定 | 仮登録済み（ID: `hrmos_22`）。ユーザーから正式値共有後に基本給・標準報酬・保険を更新する |
 | **低** | J | State管理改善 | App本体のuseState群（20以上）を useReducer/Zustand 等で整理 |
 | **低** | K | Next.js 16.x 移行検討 | 15.5.12で脆弱性0件達成済み。16.xは破壊的変更あり、現時点で緊急性なし |
@@ -388,6 +424,13 @@ curl -s -X POST http://localhost:3000/api/hrmos/sync \
 31. **taxYearFromPayMonth は接続済み** — 全7箇所の `calcPayroll()` 呼出に `{ taxYear: taxYearFromPayMonth(month) }` を追加済み（課題C完了）。`buildInsights` にも `payrollMonth` 引数を追加。
 32. **calcBonus / calcYearEndAdjustment は UI 未実装** — lib/payroll-calc.js にロジックのみ存在。page.jsx にはまだ賞与入力画面・年末調整画面がない。
 33. **コンポーネント分割リファクタ時に toAttendanceFromHrmosRecord が元に戻った** — 2f5ea84 で otAdjust/basicPayAdjust/otherAllowance を0リセットに修正したが、2ae235f の lib/hrmos-matching.js 新規作成時に修正前のコードがコピーされた。分割リファクタ後は該当箇所を必ず確認すること。feaef61 で再修正済み。
+34. **`_userEmail` をクライアントから送信しない** — 過去は `page.jsx` が `_userEmail: userEmail` を PUT ボディに含めていた。サーバー側で `supabase.auth.getUser()` を使って取得するのが正しい実装（修正済み）。クライアント提供の identity は常に無視すること。
+35. **楽観的ロックの 409 を必ずハンドルする** — `/api/state` PUT が `{ ok: false, conflict: true }` の 409 を返した場合、フロントエンドはリロードを促す警告バナーを表示する（実装済み）。409 を無視して上書き保存すると別タブのデータが消える。
+36. **確定済み月データは絶対に改竄できない** — サーバー側で `gross/net/payDate` の変更を検出すると 403 を返す（修正済み）。フロント側の「確定取消」ボタンを経由してから再計算・再確定すること。
+37. **監査ログ書込みは fire-and-forget にする** — `writeAuditLog()` のエラーで本体の保存処理をブロックしてはいけない。必ず `.catch(() => {})` で無視する設計を維持すること。
+38. **税額定数は毎年4月に要更新** — `lib/payroll-calc.js` の `estimateTax` 関数の JSDoc に ⚠️ 毎年要確認ブロックがある。新年度対応時は `TAX_TABLE_RXX` を追加し、`useR7` の三項演算子分岐を拡張する。国税庁「給与所得の源泉徴収税額表」で必ず確認すること。
+39. **`state_history` の id は正の整数のみ URL に埋め込む** — プルーニング処理で `id=lte.${oldestId}` のようにURLに直接補間するため、`Number.isInteger && > 0` チェックが必須（実装済み）。この検証を外すと SQL インジェクション的な攻撃が可能になる。
+40. **`NON_NEGATIVE_FIELDS` に含まれないフィールドは負値を許容する** — `basicPayAdjust` / `otAdjust` / `otherAllowance` は調整値のため負値が正当。勤怠の実績値（workDays・legalOT等）だけをクランプすること。
 
 ---
 
@@ -395,6 +438,8 @@ curl -s -X POST http://localhost:3000/api/hrmos/sync \
 
 | 日付 | 変更内容 |
 |------|---------|
+| 2026-02-27 | **セキュリティ監査・全リスク解消** (013f254, f73a9b7): コード修正10件（A:_userEmail削除, B:÷0ガード, C:id検証, D:10MB上限, E:本番503, F:楽観的ロック, H/I:負値ガード, J:確定月保護, CSV:インジェクション対策）+ Supabase設定2件（audit_log・state_history テーブル作成 + 全3テーブルRLS設定）。 |
+| 2026-02-27 | **中期品質改善** (0f58723): M: estimateTax 税率定数に ⚠️ 毎年要確認コメント・R7/R8値を並記。N: app/page.jsx の移行コード3ブロックに [Migration A/B/C] ラベルと削除可能条件を整備。P: AuditLogPanel を offset ベースページネーション化（50件 + 「さらに読み込む」）・api/audit に ?offset= 追加。Q: MAX_HISTORY=50 の根拠・変更判断基準を JSDoc で策定。HANDOFF.md 全面更新・push。 |
 | 2026-02-26 | **政府届出書ローカルホスティング化** (7e4bffc): nenkin.go.jp / hellowork.mhlw.go.jp の不安定・リンク切れリンクを全廃。社保3様式（資格取得届 = kou_1.pdf / 被扶養者異動届 = 001339902.pdf / 資格喪失届 = kou_2.pdf）を mhlw.go.jp 公式PDFから取得し `public/forms/` に収録。雇保資格取得届は既存PDF維持。雇保資格喪失届・離職証明書はPDFダウンロード不可のためハローワークインターネットサービス（hoken.hellowork.mhlw.go.jp）の安定URLへ変更。OnboardingWizardPage.jsx のnote文を実態に合わせ更新。 |
 | 2026-02-26 | **全体精査・バグ修正** (feaef61): [重大] `hrmos-matching.js: toAttendanceFromHrmosRecord` のリグレッション修正（コンポーネント分割リファクタ時に otAdjust/basicPayAdjust/otherAllowance が0リセットから prevAtt継承に戻っていた）。[重大] `page.jsx: EmployeesPage` に `monthlySnapshots`/`monthlyHistory` を渡していなかった（算定基礎届の自動計算が常に空データ）。[改善] `document-analyze/route.js`: AIモデルを `claude-opus-4-5` → `claude-sonnet-4-6` に更新。[UI] `EmployeesPage.jsx`: コメント誤字修正。[追加] `public/forms/`: 入退社ウィザード用PDF3件を git 管理下に追加。落とし穴#33を追記。 |
 | 2026-02-24 | **書類ダウンロードボタン・アップロードサポート**: 社保資格取得届・被扶養者届・雇用保険資格取得届・社保資格喪失届・雇用保険資格喪失届の書類GuidePanelFormペールを全ステップに追加。`DocumentUploadPanel.jsx` 新規作成：5書類タイプ（源泉徴収票/マイナンバー/扶養控除/履歴書/その他）に対応。Supabase Storageへのアップロード機能と「源泉徴収票の「支払金額」欄をシステムの「住民税月額」欄に入力」レベルの静的ガイド表示機能を実装。 |
