@@ -299,10 +299,10 @@ export const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidL
                 </button>
             </div>
 
-            {/* 住民税一括更新カード — 毎年6月から翁年前に変改する */}
+            {/* 住民税一括更新カード — 毎年6月の通知書到着後に実行 */}
             <Collapsible title="🏦 住民税 一括更新（6月の通知書到着後に実行）">
                 <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
-                    市区町村から届く「特別徴収税額決定通知書」の金額を構に入力して「一括適用」を押すと、全員分がまとめて更新されます。
+                    市区町村から届く「特別徴収税額決定通知書」の金額を各欄に入力して「一括適用」を押すと、全員分がまとめて更新されます。
                     <span style={{ color: "#b45309" }}>※適用は6月給与付分から有効です。</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

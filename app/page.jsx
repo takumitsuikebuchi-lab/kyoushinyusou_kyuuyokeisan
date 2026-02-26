@@ -455,7 +455,8 @@ export default function App() {
         )}
         {page === "employees" && (
           <EmployeesPage employees={employees} setEmployees={setEmployees} setAttendance={setAttendance}
-            setPaidLeaveBalance={setPaidLeaveBalance} onGoPayroll={() => setPage("payroll")} setChangeLogs={setChangeLogs} settings={settings} />
+            setPaidLeaveBalance={setPaidLeaveBalance} onGoPayroll={() => setPage("payroll")} setChangeLogs={setChangeLogs} settings={settings}
+            monthlyHistory={monthlyHistory} monthlySnapshots={monthlySnapshots} />
         )}
         {page === "history" && (
           <HistoryPage employees={employees} attendance={attendance} monthlyHistory={monthlyHistory}
