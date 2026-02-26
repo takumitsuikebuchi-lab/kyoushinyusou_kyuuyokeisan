@@ -24,7 +24,7 @@ import { BackupPanel } from "@/app/components/BackupPanel";
 import {
   pad2, parsePayDay, isNextMonthPay, toIsoDate, processingMonthOf, fiscalYearOf, buildFiscalMonths,
   monthFullLabel, monthLabel, fiscalYearFromDate, parseDateLike, formatDateJP,
-  calcDefaultPayDateByMonth, defaultPayDateStringByMonth, payrollCycleLabel, fmt, money, parseMoney,
+  calcDefaultPayDateByMonth, defaultPayDateStringByMonth, payDateForPaymentMonth, payrollCycleLabel, fmt, money, parseMoney,
   normalizeName, normalizeHrmosEmployeeNumber, getEmployeeHrmosNumber, upsertMonthHistory, nextActionText, EMPTY_ATTENDANCE
 } from "@/lib/date-utils";
 import { findEmployeesByHrmosNumber, collectEmployeeSetupIssues, matchEmployeeByHrmosRecord, hrmosMatchTypeLabel, toAttendanceFromHrmosRecord } from "@/lib/hrmos-matching";
@@ -47,7 +47,7 @@ export default function App() {
   const [employees, setEmployees] = useState(INITIAL_EMPLOYEES);
   const [attendance, setAttendance] = useState(INITIAL_ATTENDANCE);
   const [monthlyHistory, setMonthlyHistory] = useState(() =>
-    upsertMonthHistory(INITIAL_MONTHLY_HISTORY, CURRENT_PROCESSING_MONTH, { payDate: defaultPayDateStringByMonth(CURRENT_PROCESSING_MONTH, INITIAL_MASTER_SETTINGS.paymentDay), gross: 0, net: 0, confirmedBy: "-", status: "未計算" })
+    upsertMonthHistory(INITIAL_MONTHLY_HISTORY, CURRENT_PROCESSING_MONTH, { payDate: payDateForPaymentMonth(CURRENT_PROCESSING_MONTH, INITIAL_MASTER_SETTINGS.paymentDay), gross: 0, net: 0, confirmedBy: "-", status: "未計算" })
   );
   const [monthlySnapshots, setMonthlySnapshots] = useState(INITIAL_MONTHLY_SNAPSHOTS);
   const [paidLeaveBalance, setPaidLeaveBalance] = useState(INITIAL_PAID_LEAVE_BALANCE);
@@ -78,7 +78,7 @@ export default function App() {
   const oldestUnconfirmed = sortedMonthlyHistory.find((m) => m.status !== "確定");
   const payrollTargetMonth = oldestUnconfirmed?.month || CURRENT_PROCESSING_MONTH;
   const payrollTargetRow = sortedMonthlyHistory.find((m) => m.month === payrollTargetMonth);
-  const payrollTargetPayDate = payrollTargetRow?.payDate || defaultPayDateStringByMonth(payrollTargetMonth, settings.paymentDay);
+  const payrollTargetPayDate = payrollTargetRow?.payDate || payDateForPaymentMonth(payrollTargetMonth, settings.paymentDay);
   const payrollTargetStatus = payrollTargetRow?.status || "未計算";
   const monthlyChecks = useMemo(
     () => buildMonthlyChecks(employees, attendance, payrollTargetStatus, hrmosSettings, hrmosUnmatchedRecords, findEmployeesByHrmosNumber, normalizeHrmosEmployeeNumber, getEmployeeHrmosNumber, collectEmployeeSetupIssues, EMPTY_ATTENDANCE),
@@ -92,7 +92,7 @@ export default function App() {
   const statusDotClass = payrollTargetStatus === "確定" && !isAttendanceDirty ? "green" : isAttendanceDirty || payrollTargetStatus === "計算中" ? "yellow" : payrollTargetStatus === "未計算" ? "red" : "green";
 
   useEffect(() => {
-    setMonthlyHistory((prev) => upsertMonthHistory(prev, CURRENT_PROCESSING_MONTH, { payDate: defaultPayDateStringByMonth(CURRENT_PROCESSING_MONTH, settings.paymentDay), status: prev.find((m) => m.month === CURRENT_PROCESSING_MONTH)?.status || "未計算" }));
+    setMonthlyHistory((prev) => upsertMonthHistory(prev, CURRENT_PROCESSING_MONTH, { payDate: payDateForPaymentMonth(CURRENT_PROCESSING_MONTH, settings.paymentDay), status: prev.find((m) => m.month === CURRENT_PROCESSING_MONTH)?.status || "未計算" }));
   }, []);
 
   // Hydrate
@@ -143,7 +143,7 @@ export default function App() {
               }
             }
           }
-          setMonthlyHistory(upsertMonthHistory(saved.monthlyHistory || INITIAL_MONTHLY_HISTORY, CURRENT_PROCESSING_MONTH, { payDate: defaultPayDateStringByMonth(CURRENT_PROCESSING_MONTH, mergedSettings.paymentDay), status: (saved.monthlyHistory || []).find((m) => m.month === CURRENT_PROCESSING_MONTH)?.status || "未計算" }));
+          setMonthlyHistory(upsertMonthHistory(saved.monthlyHistory || INITIAL_MONTHLY_HISTORY, CURRENT_PROCESSING_MONTH, { payDate: payDateForPaymentMonth(CURRENT_PROCESSING_MONTH, mergedSettings.paymentDay), status: (saved.monthlyHistory || []).find((m) => m.month === CURRENT_PROCESSING_MONTH)?.status || "未計算" }));
           setMonthlySnapshots(saved.monthlySnapshots || INITIAL_MONTHLY_SNAPSHOTS);
           setPaidLeaveBalance(saved.paidLeaveBalance || INITIAL_PAID_LEAVE_BALANCE);
           setSettings(mergedSettings);
