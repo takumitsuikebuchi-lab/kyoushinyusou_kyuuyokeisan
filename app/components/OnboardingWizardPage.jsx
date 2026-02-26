@@ -283,11 +283,13 @@ const OFFBOARDING_STEPS = [
                     name: "雇用保険 被保険者資格喪失届",
                     url: "https://hoken.hellowork.mhlw.go.jp/assist/001000.do?screenId=001000&action=koyohohiSoshitsuLink",
                     note: "ハローワーク インターネットサービスで作成・印刷（PDFダウンロード不可・オンライン入力後に印刷）",
+                    isOnline: true,
                 },
                 {
                     name: "離職証明書（離職票が必要な場合）",
                     url: "https://hoken.hellowork.mhlw.go.jp/assist/001000.do?screenId=001000&action=initDisp",
                     note: "退職者が失業給付を希望する場合のみ必要。PDFダウンロード不可のため、ハローワーク窓口または上記オンラインサービスで作成",
+                    isOnline: true,
                 },
             ],
         },
@@ -451,10 +453,10 @@ const GuidePanel = ({ guide }) => {
                                     </div>
                                     <div style={{
                                         flexShrink: 0, fontSize: 11, fontWeight: 600,
-                                        background: "#16a34a", color: "white",
+                                        background: form.isOnline ? "#2563eb" : "#16a34a", color: "white",
                                         borderRadius: 5, padding: "2px 8px",
                                         alignSelf: "center",
-                                    }}>↓ PDF</div>
+                                    }}>{form.isOnline ? "→ 作成" : "↓ PDF"}</div>
                                 </div>
                             </a>
                         ))}
@@ -636,19 +638,34 @@ const InlineRegisterForm = ({ employees, settings, setEmployees, setAttendance, 
     );
 };
 
+// ===== ユーティリティ =====
+const getUrgentGuides = (steps) =>
+    Object.fromEntries(steps.filter(s => s.deadlineUrgent).map(s => [s.id, true]));
+
+const loadChecked = () => {
+    try { return JSON.parse(localStorage.getItem("wizard_checked") || "{}"); } catch { return {}; }
+};
+const saveChecked = (obj) => {
+    try { localStorage.setItem("wizard_checked", JSON.stringify(obj)); } catch {}
+};
+
 // ===== メインコンポーネント =====
 export const OnboardingWizardPage = ({
     employees, setEmployees, setAttendance, setPaidLeaveBalance, setChangeLogs,
     settings, setPage,
 }) => {
-    const [wizardType, setWizardType] = useState("onboarding"); // "onboarding" | "offboarding"
-    const [checked, setChecked] = useState({});
+    const [wizardType, setWizardType] = useState(() => localStorage.getItem("wizard_type") || "onboarding");
+    const [checked, setChecked] = useState(loadChecked);
     const [showRegisterForm, setShowRegisterForm] = useState(false);
     const [registeredEmployee, setRegisteredEmployee] = useState(null);
-    const [openGuides, setOpenGuides] = useState({});
+    const [openGuides, setOpenGuides] = useState(() => {
+        const wt = localStorage.getItem("wizard_type") || "onboarding";
+        return getUrgentGuides(wt === "onboarding" ? ONBOARDING_STEPS : OFFBOARDING_STEPS);
+    });
     // offboarding
     const [selectedEmpId, setSelectedEmpId] = useState("");
     const [leaveDate, setLeaveDate] = useState(new Date().toISOString().slice(0, 10));
+    const [offboardConfirmed, setOffboardConfirmed] = useState(false);
     const [offboardDone, setOffboardDone] = useState(false);
 
     const activeEmployees = employees.filter(e => e.status === "在籍");
@@ -658,17 +675,25 @@ export const OnboardingWizardPage = ({
 
     // タブ切替時にリセット
     const switchWizard = (type) => {
+        try { localStorage.setItem("wizard_type", type); } catch {}
+        const newChecked = {};
+        saveChecked(newChecked);
         setWizardType(type);
-        setChecked({});
+        setChecked(newChecked);
         setShowRegisterForm(false);
         setRegisteredEmployee(null);
         setSelectedEmpId("");
         setLeaveDate(new Date().toISOString().slice(0, 10));
+        setOffboardConfirmed(false);
         setOffboardDone(false);
-        setOpenGuides({});
+        setOpenGuides(getUrgentGuides(type === "onboarding" ? ONBOARDING_STEPS : OFFBOARDING_STEPS));
     };
 
-    const toggleCheck = (id) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+    const toggleCheck = (id) => setChecked(prev => {
+        const next = { ...prev, [id]: !prev[id] };
+        saveChecked(next);
+        return next;
+    });
     const toggleGuide = (id) => setOpenGuides(prev => ({ ...prev, [id]: !prev[id] }));
 
     const handleOffboard = () => {
@@ -684,7 +709,11 @@ export const OnboardingWizardPage = ({
         ));
         if (setChangeLogs) setChangeLogs(prev => [{ at: new Date().toISOString(), type: "退職", text: `${target.name} を退職処理（ウィザードから）` }, ...prev].slice(0, 30));
         setOffboardDone(true);
-        setChecked(prev => ({ ...prev, system_offboard: true }));
+        setChecked(prev => {
+            const next = { ...prev, system_offboard: true };
+            saveChecked(next);
+            return next;
+        });
     };
 
     return (
@@ -720,9 +749,30 @@ export const OnboardingWizardPage = ({
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
                         進捗: {completedCount} / {steps.length} ステップ完了
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: progress === 100 ? "#16a34a" : "#2563eb" }}>
-                        {progress}%
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <button
+                            className="btn btn-outline btn-sm"
+                            style={{ fontSize: 11, padding: "2px 8px" }}
+                            onClick={() => {
+                                if (!window.confirm("チェック状態をリセットしますか？")) return;
+                                const newChecked = {};
+                                saveChecked(newChecked);
+                                setChecked(newChecked);
+                                setShowRegisterForm(false);
+                                setRegisteredEmployee(null);
+                                setSelectedEmpId("");
+                                setLeaveDate(new Date().toISOString().slice(0, 10));
+                                setOffboardConfirmed(false);
+                                setOffboardDone(false);
+                                setOpenGuides(getUrgentGuides(steps));
+                            }}
+                        >
+                            🔄 リセット
+                        </button>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: progress === 100 ? "#16a34a" : "#2563eb" }}>
+                            {progress}%
+                        </span>
+                    </div>
                 </div>
                 <div style={{ background: "#e2e8f0", borderRadius: 999, height: 8, overflow: "hidden" }}>
                     <div style={{
@@ -738,6 +788,58 @@ export const OnboardingWizardPage = ({
                     </div>
                 )}
             </div>
+
+            {/* 退社: 対象者を最初に確定 */}
+            {wizardType === "offboarding" && (
+                <div style={{ marginBottom: 16, padding: "14px 18px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#92400e", marginBottom: 10 }}>
+                        📋 まず退社する従業員と退職日を確認してください
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <select
+                            value={selectedEmpId}
+                            onChange={e => { setSelectedEmpId(e.target.value); setOffboardConfirmed(false); setChecked(prev => { const n = { ...prev, confirm_date: false }; saveChecked(n); return n; }); }}
+                            disabled={offboardConfirmed}
+                            style={{ padding: "6px 10px", minWidth: 180, fontSize: 13 }}
+                        >
+                            <option value="">対象者を選択...</option>
+                            {activeEmployees.map(e => (
+                                <option key={e.id} value={e.id}>{e.name}（{e.employmentType || "正社員"}）</option>
+                            ))}
+                        </select>
+                        <label style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                            退職日:
+                            <input
+                                type="date"
+                                value={leaveDate}
+                                onChange={e => { setLeaveDate(e.target.value); setOffboardConfirmed(false); setChecked(prev => { const n = { ...prev, confirm_date: false }; saveChecked(n); return n; }); }}
+                                disabled={offboardConfirmed}
+                                style={{ padding: "4px 8px" }}
+                            />
+                        </label>
+                        {offboardConfirmed ? (
+                            <button className="btn btn-sm btn-outline" onClick={() => {
+                                setOffboardConfirmed(false);
+                                setChecked(prev => { const n = { ...prev, confirm_date: false }; saveChecked(n); return n; });
+                            }}>変更する</button>
+                        ) : (
+                            <button
+                                className="btn btn-sm btn-primary"
+                                disabled={!selectedEmpId}
+                                onClick={() => {
+                                    setOffboardConfirmed(true);
+                                    setChecked(prev => { const n = { ...prev, confirm_date: true }; saveChecked(n); return n; });
+                                }}
+                            >確定</button>
+                        )}
+                        {offboardConfirmed && (
+                            <span style={{ fontSize: 13, color: "#15803d", fontWeight: 600 }}>
+                                ✓ {activeEmployees.find(e => String(e.id) === String(selectedEmpId))?.name} / 退職日: {leaveDate}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* ステップ一覧 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -807,6 +909,30 @@ export const OnboardingWizardPage = ({
                                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 6, lineHeight: 1.6 }}>
                                     {step.note}
                                 </div>
+
+                                {/* 書類バッジ（ガイドを開かなくても視認） */}
+                                {step.guide?.forms?.length > 0 && (
+                                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+                                        {step.guide.forms.map((form, i) => (
+                                            <a
+                                                key={i}
+                                                href={form.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    fontSize: 11, textDecoration: "none",
+                                                    color: form.isOnline ? "#1d4ed8" : "#15803d",
+                                                    background: form.isOnline ? "#eff6ff" : "#f0fdf4",
+                                                    border: `1px solid ${form.isOnline ? "#bfdbfe" : "#86efac"}`,
+                                                    borderRadius: 4, padding: "2px 7px",
+                                                    display: "inline-flex", alignItems: "center", gap: 3,
+                                                }}
+                                            >
+                                                {form.isOnline ? "→" : "📄"} {form.name.length > 20 ? form.name.slice(0, 20) + "…" : form.name}
+                                            </a>
+                                        ))}
+                                    </div>
+                                )}
 
                                 {/* 詳細ガイドボタン */}
                                 {step.guide && (
@@ -885,25 +1011,13 @@ export const OnboardingWizardPage = ({
                                     </div>
                                 )}
 
-                                {/* 退職日入力ステップ */}
+                                {/* 退職日確認ステップ（上部パネルで処理） */}
                                 {step.action === undefined && step.kind === "input" && (
-                                    <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                                        <label style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
-                                            退職日:
-                                            <input
-                                                type="date"
-                                                value={leaveDate}
-                                                onChange={e => { setLeaveDate(e.target.value); }}
-                                                style={{ padding: "4px 8px" }}
-                                            />
-                                        </label>
-                                        <button
-                                            className="btn btn-sm btn-outline"
-                                            onClick={() => setChecked(prev => ({ ...prev, [step.id]: true }))}
-                                        >
-                                            確定
-                                        </button>
-                                        {done && <Badge variant="success">✓ 退職日: {leaveDate}</Badge>}
+                                    <div style={{ marginTop: 8 }}>
+                                        {done
+                                            ? <Badge variant="success">✓ 退職日: {leaveDate}</Badge>
+                                            : <div style={{ fontSize: 12, color: "#b45309" }}>↑ ページ上部で対象者と退職日を選択して「確定」してください</div>
+                                        }
                                     </div>
                                 )}
 
@@ -912,22 +1026,16 @@ export const OnboardingWizardPage = ({
                                     <div style={{ marginTop: 10 }}>
                                         {offboardDone ? (
                                             <Badge variant="success">✓ 退職処理完了</Badge>
+                                        ) : !offboardConfirmed ? (
+                                            <div style={{ fontSize: 12, color: "#b45309" }}>↑ ページ上部で対象者と退職日を先に確定してください</div>
                                         ) : (
                                             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                                <select
-                                                    value={selectedEmpId}
-                                                    onChange={e => setSelectedEmpId(e.target.value)}
-                                                    style={{ padding: "6px 10px", minWidth: 160 }}
-                                                >
-                                                    <option value="">対象者を選択...</option>
-                                                    {activeEmployees.map(e => (
-                                                        <option key={e.id} value={e.id}>{e.name} ({e.employmentType || "正社員"})</option>
-                                                    ))}
-                                                </select>
+                                                <span style={{ fontSize: 13, color: "#475569" }}>
+                                                    対象: <strong>{activeEmployees.find(e => String(e.id) === String(selectedEmpId))?.name}</strong>　退職日: <strong>{leaveDate}</strong>
+                                                </span>
                                                 <button
                                                     className="btn btn-sm btn-danger"
                                                     onClick={handleOffboard}
-                                                    disabled={!selectedEmpId}
                                                 >
                                                     退職処理を実行
                                                 </button>
@@ -957,24 +1065,6 @@ export const OnboardingWizardPage = ({
                 })}
             </div>
 
-            {/* リセットボタン */}
-            <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
-                <button
-                    className="btn btn-outline btn-sm"
-                    onClick={() => {
-                        if (!window.confirm("チェック状態をリセットしますか？")) return;
-                        setChecked({});
-                        setShowRegisterForm(false);
-                        setRegisteredEmployee(null);
-                        setSelectedEmpId("");
-                        setLeaveDate(new Date().toISOString().slice(0, 10));
-                        setOffboardDone(false);
-                        setOpenGuides({});
-                    }}
-                >
-                    🔄 チェックをリセット
-                </button>
-            </div>
         </div>
     );
 };
