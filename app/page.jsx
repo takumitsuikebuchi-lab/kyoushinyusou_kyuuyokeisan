@@ -143,7 +143,10 @@ export default function App() {
               }
             }
           }
-          setMonthlyHistory(upsertMonthHistory(saved.monthlyHistory || INITIAL_MONTHLY_HISTORY, CURRENT_PROCESSING_MONTH, { payDate: payDateForPaymentMonth(CURRENT_PROCESSING_MONTH, mergedSettings.paymentDay), status: (saved.monthlyHistory || []).find((m) => m.month === CURRENT_PROCESSING_MONTH)?.status || "未計算" }));
+          // 全行のpayDateを正しく再計算（旧バグで1ヶ月ズレていた値を修正）
+          const rawHistory = saved.monthlyHistory || INITIAL_MONTHLY_HISTORY;
+          const fixedHistory = rawHistory.map((row) => ({ ...row, payDate: payDateForPaymentMonth(row.month, mergedSettings.paymentDay) }));
+          setMonthlyHistory(upsertMonthHistory(fixedHistory, CURRENT_PROCESSING_MONTH, { payDate: payDateForPaymentMonth(CURRENT_PROCESSING_MONTH, mergedSettings.paymentDay), status: rawHistory.find((m) => m.month === CURRENT_PROCESSING_MONTH)?.status || "未計算" }));
           setMonthlySnapshots(saved.monthlySnapshots || INITIAL_MONTHLY_SNAPSHOTS);
           setPaidLeaveBalance(saved.paidLeaveBalance || INITIAL_PAID_LEAVE_BALANCE);
           setSettings(mergedSettings);
