@@ -64,8 +64,6 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("読込中");
   const isSavingRef = useRef(false);
   const hydratedAtRef = useRef(null); // hydrate完了時刻（直後のauto-save抑制用）
-  const serverUpdatedAtRef = useRef(null); // サーバーが返した最終updatedAt（楽観的ロック用）
-  const [hasConflict, setHasConflict] = useState(false); // 並行タブ競合フラグ
   const [userEmail, setUserEmail] = useState("");
 
   // Fetch logged-in user email
@@ -201,15 +199,14 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Auto-save (debounced 800ms to reduce rapid-fire writes)
+  // Auto-save (debounced 800ms)
   useEffect(() => {
     if (!isStateHydrated) return;
     // Supabase読込が失敗した場合はauto-saveをスキップ（初期データでクラウドデータを上書きするのを防ぐ）
     if (!isHydrationOk) return;
     const timer = setTimeout(async () => {
-      // hydrate直後2秒間はauto-saveをスキップ（連続書き込みによる重複を防ぐ）
+      // hydrate直後2秒間はauto-saveをスキップ
       if (hydratedAtRef.current && Date.now() - hydratedAtRef.current < 2000) return;
-      // 保存中なら重複リクエストをスキップ
       if (isSavingRef.current) return;
       isSavingRef.current = true;
       try {
@@ -218,41 +215,12 @@ export default function App() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            employees,
-            attendance,
-            monthlyHistory,
-            monthlySnapshots,
-            paidLeaveBalance,
-            settings,
-            hrmosSettings,
-            hrmosSyncPreview,
-            hrmosUnmatchedRecords,
-            syncStatus,
-            calcStatus,
-            isAttendanceDirty,
-            changeLogs,
-            // 楽観的ロック: 最後に取得したサーバーのupdatedAtを送信
-            _expectedUpdatedAt: serverUpdatedAtRef.current,
+            employees, attendance, monthlyHistory, monthlySnapshots,
+            paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview,
+            hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs,
           }),
         });
-        if (res.status === 409) {
-          // 別タブから先に保存された。
-          // 編集中でなければ自動リロード。編集中ならステータスバーにボタンを表示するにとどめる。
-          setHasConflict(true);
-          setSaveStatus("競合");
-          // 3秒待って自動リロード（ユーザーが編集中でない場合のみ）
-          setTimeout(() => {
-            if (!document.querySelector(".inline-edit-panel")) {
-              window.location.reload();
-            }
-          }, 3000);
-          return;
-        }
         if (!res.ok) throw new Error("failed");
-        const saved = await res.json();
-        // 成功したら最新のupdatedAtを更新
-        if (saved?.updatedAt) serverUpdatedAtRef.current = saved.updatedAt;
-        setHasConflict(false);
         setSaveStatus("保存済み");
       } catch { setSaveStatus("保存失敗"); }
       finally { isSavingRef.current = false; }
@@ -488,18 +456,9 @@ export default function App() {
           <span style={{ color: "#cbd5e1" }}>|</span>
           <span>{actionText}</span>
           <span style={{ color: "#cbd5e1" }}>|</span>
-          {hasConflict ? (
-            <button
-              onClick={() => window.location.reload()}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#f59e0b", fontWeight: 600, fontSize: "inherit", padding: 0 }}
-            >
-              ↻ 更新して最新を取得
-            </button>
-          ) : (
-            <span style={{ color: (saveStatus === "保存失敗" || saveStatus === "ローカル保存未接続") ? "#dc2626" : saveStatus === "保存中" ? "#f59e0b" : undefined }}>
-              {saveStatus === "ローカル保存未接続" ? "⚠️ 読込失敗" : saveStatus === "保存失敗" ? "⚠️ 保存失敗" : saveStatus}
-            </span>
-          )}
+          <span style={{ color: saveStatus === "保存失敗" ? "#dc2626" : saveStatus === "保存中" ? "#f59e0b" : undefined }}>
+            {saveStatus}
+          </span>
         </div>
 
 
