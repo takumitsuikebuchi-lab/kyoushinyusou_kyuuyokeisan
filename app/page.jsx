@@ -60,6 +60,7 @@ export default function App() {
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false);
   const [changeLogs, setChangeLogs] = useState([]);
   const [isStateHydrated, setIsStateHydrated] = useState(false);
+  const [isHydrationOk, setIsHydrationOk] = useState(false); // Supabaseからの読込成功フラグ（失敗時に初期値で上書きするのを防ぐ）
   const [saveStatus, setSaveStatus] = useState("読込中");
   const isSavingRef = useRef(false);
   const hydratedAtRef = useRef(null); // hydrate完了時刻（直後のauto-save抑制用）
@@ -179,8 +180,16 @@ export default function App() {
           // 最終更新日時を記録（楽観的ロックで並行タブ競合を検出するために使用）
           serverUpdatedAtRef.current = payload?.updatedAt || null;
           setSaveStatus("保存済み");
+          // Supabase読込成功 → auto-saveを許可（データなし＝初回利用のときも許可）
+          setIsHydrationOk(true);
         }
-      } catch { if (!cancelled) setSaveStatus("ローカル保存未接続"); }
+      } catch {
+        if (!cancelled) {
+          setSaveStatus("ローカル保存未接続");
+          // Supabase読込失敗 → auto-saveを禁止（初期データでクラウドデータを上書きするのを防ぐ）
+          // setIsHydrationOk は false のまま維持する
+        }
+      }
       finally {
         if (!cancelled) {
           hydratedAtRef.current = Date.now();
@@ -195,6 +204,8 @@ export default function App() {
   // Auto-save (debounced 800ms to reduce rapid-fire writes)
   useEffect(() => {
     if (!isStateHydrated) return;
+    // Supabase読込が失敗した場合はauto-saveをスキップ（初期データでクラウドデータを上書きするのを防ぐ）
+    if (!isHydrationOk) return;
     const timer = setTimeout(async () => {
       // hydrate直後2秒間はauto-saveをスキップ（連続書き込みによる重複を防ぐ）
       if (hydratedAtRef.current && Date.now() - hydratedAtRef.current < 2000) return;
@@ -240,7 +251,7 @@ export default function App() {
       finally { isSavingRef.current = false; }
     }, 800);
     return () => clearTimeout(timer);
-  }, [isStateHydrated, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
+  }, [isStateHydrated, isHydrationOk, employees, attendance, monthlyHistory, monthlySnapshots, paidLeaveBalance, settings, hrmosSettings, hrmosSyncPreview, hrmosUnmatchedRecords, syncStatus, calcStatus, isAttendanceDirty, changeLogs]);
 
   const onConfirmPayroll = (results) => {
     const totalGross = results.reduce((s, r) => s + r.result.gross, 0);
@@ -478,7 +489,9 @@ export default function App() {
           <span style={{ color: "#cbd5e1" }}>|</span>
           <span>{actionText}</span>
           <span style={{ color: "#cbd5e1" }}>|</span>
-          <span style={{ color: saveStatus === "保存失敗" ? "#dc2626" : undefined }}>{saveStatus}</span>
+          <span style={{ color: (saveStatus === "保存失敗" || saveStatus === "ローカル保存未接続") ? "#dc2626" : saveStatus === "保存中" ? "#f59e0b" : undefined }}>
+            {saveStatus === "ローカル保存未接続" ? "⚠️ 読込失敗（データ保存停止中）" : saveStatus === "保存失敗" ? "⚠️ 保存失敗" : saveStatus}
+          </span>
         </div>
 
 
