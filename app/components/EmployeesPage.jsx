@@ -141,7 +141,14 @@ export const EmployeesPage = ({ employees, setEmployees, setAttendance, setPaidL
             setEditSavedMsg("HRMOS連携IDが重複しています");
             return;
         }
-        const nextEmp = { ...editBuf, hrmosEmployeeNumber: normalizedHrmos };
+        // employmentType が未設定の場合はドロップダウンの表示フォールバックと同じ値を補完する
+        const resolvedEmploymentType =
+            editBuf.employmentType || (editBuf.isOfficer ? "役員" : "正社員");
+        const nextEmp = {
+            ...editBuf,
+            hrmosEmployeeNumber: normalizedHrmos,
+            employmentType: resolvedEmploymentType,
+        };
         setEmployees((prev) => prev.map((e) => e.id === nextEmp.id ? nextEmp : e));
         setEditDirty(false);
         setEditSavedMsg("保存しました");
