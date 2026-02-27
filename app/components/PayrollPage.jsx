@@ -451,38 +451,46 @@ export const PayrollPage = ({
             {/* HRMOS */}
             <div style={{ marginTop: 12 }}>
                 <Collapsible title="HRMOS連携・自動計算">
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                        <label className="form-label">
-                            Base URL
-                            <input value={hrmosSettings.baseUrl} onChange={(e) => updateHrmos("baseUrl", e.target.value)} placeholder="https://ieyasu.co" disabled style={{ backgroundColor: "#f1f5f9" }} />
-                        </label>
-                        <label className="form-label">
-                            Company URL
-                            <input value={hrmosSettings.companyUrl} onChange={(e) => updateHrmos("companyUrl", e.target.value)} placeholder="your_company" />
-                        </label>
-                        <label className="form-label">
-                            API Key (Secret Key)
-                            <input type="password" value={hrmosSettings.apiKey} onChange={(e) => updateHrmos("apiKey", e.target.value)} placeholder="HRMOS管理画面から取得" autoComplete="off" />
-                        </label>
-                        <label className="form-label">
-                            Client ID
-                            <input value={hrmosSettings.clientId} onChange={(e) => updateHrmos("clientId", e.target.value)} placeholder="client_id (任意)" />
-                        </label>
-                        <div style={{ display: "flex", gap: 12, alignItems: "end" }}>
-                            <label className="checkbox-label">
+                    {/* 接続設定（初期は折りたたみ） */}
+                    <details style={{ marginBottom: 10 }}>
+                        <summary style={{ fontSize: 12, color: "#64748b", cursor: "pointer", userSelect: "none", paddingBottom: 6 }}>
+                            ⚙️ 接続設定
+                        </summary>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px solid #e2e8f0" }}>
+                            <label className="form-label">
+                                Company URL
+                                <input value={hrmosSettings.companyUrl} onChange={(e) => updateHrmos("companyUrl", e.target.value)} placeholder="your_company" />
+                            </label>
+                            <label className="form-label">
+                                API Key
+                                <input type="password" value={hrmosSettings.apiKey} onChange={(e) => updateHrmos("apiKey", e.target.value)} placeholder="HRMOS管理画面から取得" autoComplete="off" />
+                            </label>
+                            <label className="form-label" style={{ gridColumn: "1 / -1" }}>
+                                Client ID <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: 11 }}>(任意)</span>
+                                <input value={hrmosSettings.clientId} onChange={(e) => updateHrmos("clientId", e.target.value)} placeholder="client_id" />
+                            </label>
+                        </div>
+                    </details>
+
+                    {/* メイン操作エリア */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <button className="btn btn-success btn-sm" onClick={onHrmosSync}>勤怠取込</button>
+                        <button className="btn btn-primary btn-sm" onClick={onRunAutoCalc} disabled={(hrmosUnmatchedRecords || []).length > 0}>自動計算を実行</button>
+                        {(syncStatus || calcStatus) && (
+                            <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                                {[syncStatus, calcStatus].filter(Boolean).join(" / ")}
+                            </span>
+                        )}
+                        <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+                            <label className="checkbox-label" style={{ fontSize: 12 }}>
                                 <input type="checkbox" checked={hrmosSettings.autoSyncEnabled} onChange={(e) => updateHrmos("autoSyncEnabled", e.target.checked)} />
                                 自動同期
                             </label>
-                            <label className="checkbox-label">
+                            <label className="checkbox-label" style={{ fontSize: 12 }}>
                                 <input type="checkbox" checked={hrmosSettings.autoCalcEnabled} onChange={(e) => updateHrmos("autoCalcEnabled", e.target.checked)} />
                                 自動計算
                             </label>
                         </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <button className="btn btn-success btn-sm" onClick={onHrmosSync}>HRMOSから勤怠取込（プレビュー）</button>
-                        <button className="btn btn-primary btn-sm" onClick={onRunAutoCalc} disabled={(hrmosUnmatchedRecords || []).length > 0}>月次自動計算を実行</button>
-                        <span style={{ fontSize: 12, color: "#94a3b8" }}>同期: {syncStatus || "-"} / 計算: {calcStatus || "-"}</span>
                     </div>
 
                     {hrmosSyncPreview && (
