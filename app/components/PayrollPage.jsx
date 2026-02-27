@@ -493,88 +493,134 @@ export const PayrollPage = ({
                         </div>
                     </div>
 
-                    {hrmosSyncPreview && (
-                        <div style={{ marginTop: 12, border: "1px solid #cbd5e1", borderRadius: 10, padding: 10, background: "#f8fafc" }}>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>取込プレビュー（{monthFullLabel(hrmosSyncPreview.month)}）</div>
-                            <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
-                                取得 {hrmosSyncPreview.recordCount}件 / 自動反映 {hrmosSyncPreview.autoApplicableCount}件 / 手動確認 {hrmosSyncPreview.manualReviewCount}件
-                            </div>
-                            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                                <button className="btn btn-primary btn-sm" onClick={onApplyHrmosPreview}>この内容を反映</button>
-                                <button className="btn btn-outline btn-sm" onClick={onClearHrmosPreview}>プレビュー破棄</button>
-                            </div>
-                            <div style={{ marginTop: 8, padding: "6px 10px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 6, fontSize: 11, color: "#92400e" }}>
-                                ⚠️ 反映すると「基本給調整」「残業手当調整」「その他手当」は <strong>0にリセット</strong> されます。連携後に必要な場合は手動で再入力してください。
-                            </div>
-                            <div style={{ marginTop: 8, maxHeight: 220, overflow: "auto", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff" }}>
-                                <table className="data-table" style={{ minWidth: 680 }}>
-                                    <thead>
-                                        <tr>
-                                            <th>HRMOS連携ID</th>
-                                            <th>氏名</th>
-                                            <th>判定</th>
-                                            <th>紐付け先</th>
-                                            <th>理由</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {hrmosSyncPreview.rows.map((row) => (
-                                            <tr key={row.recordKey}>
-                                                <td className="mono">{row.hrmosEmployeeId || "-"}</td>
-                                                <td>{row.hrmosEmployeeName || "-"}</td>
-                                                <td>{hrmosMatchTypeLabel(row.matchType)}</td>
-                                                <td>{row.matchedEmployeeName || "-"}</td>
-                                                <td style={{ color: "var(--muted)", fontSize: 11 }}>{row.matchReason || "-"}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
+                    {/* ── 同期結果パネル（プレビュー + 未紐付け + データなし を統合表示） ── */}
+                    {(hrmosSyncPreview || (hrmosUnmatchedRecords || []).length > 0) && (() => {
+                        // 在籍者のうち HRMOS から返ってきていない人を "データなし" として表示する
+                        const matchedEmpIds = new Set([
+                            ...(hrmosSyncPreview?.rows || []).map(r => String(r.matchedEmployeeId)).filter(Boolean),
+                            ...(hrmosUnmatchedRecords || []).map(r => String(r.assignedEmployeeId)).filter(Boolean),
+                        ]);
+                        const noDataEmployees = activeEmployees.filter(emp => !matchedEmpIds.has(String(emp.id)));
+                        const hasUnassigned = (hrmosUnmatchedRecords || []).some(r => !r.assignedEmployeeId);
+                        const totalRows = (hrmosSyncPreview?.rows?.length || 0)
+                            + (hrmosUnmatchedRecords || []).length
+                            + noDataEmployees.length;
 
-                    {(hrmosUnmatchedRecords || []).length > 0 && (
-                        <div style={{ marginTop: 12, border: "1px solid #fecaca", borderRadius: 10, padding: 10, background: "#fff7ed" }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: "#b45309" }}>未紐付けキュー（{hrmosUnmatchedRecords.length}件）</div>
-                            <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
-                                未紐付けが残っている間は自動計算をブロックします。紐付け先を選んで反映してください。
-                            </div>
-                            <div style={{ marginTop: 8, maxHeight: 260, overflow: "auto", border: "1px solid #fdba74", borderRadius: 8, background: "#fff" }}>
-                                <table className="data-table" style={{ minWidth: 720 }}>
-                                    <thead>
-                                        <tr>
-                                            <th>HRMOS連携ID</th>
-                                            <th>氏名</th>
-                                            <th>理由</th>
-                                            <th>割当先</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {hrmosUnmatchedRecords.map((row) => (
-                                            <tr key={row.recordKey}>
-                                                <td className="mono">{row.hrmosEmployeeId || "-"}</td>
-                                                <td>{row.hrmosEmployeeName || "-"}</td>
-                                                <td style={{ color: "var(--muted)", fontSize: 11 }}>{row.reason || "-"}</td>
-                                                <td>
-                                                    <select value={row.assignedEmployeeId || ""} onChange={(e) => onSetHrmosUnmatchedAssignment(row.recordKey, e.target.value)}>
-                                                        <option value="">-- 在籍者を選択 --</option>
-                                                        {activeEmployees.map((emp) => (
-                                                            <option key={emp.id} value={emp.id}>
-                                                                {emp.name}（{getEmployeeHrmosNumber(emp) || "連携ID未設定"}）
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </td>
+                        return (
+                            <div style={{ marginTop: 12, border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                                {/* ヘッダー */}
+                                <div style={{ padding: "8px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: 13, fontWeight: 700 }}>
+                                        HRMOS 同期結果{hrmosSyncPreview ? ` — ${monthFullLabel(hrmosSyncPreview.month)}` : ""}
+                                    </span>
+                                    <span style={{ fontSize: 11, color: "#64748b" }}>
+                                        在籍 {activeEmployees.length}名
+                                        {hrmosSyncPreview && (
+                                            <>
+                                                {" "}／ HRMOS取得 {hrmosSyncPreview.recordCount}件
+                                                {hrmosSyncPreview.autoApplicableCount > 0 && <span style={{ color: "#16a34a" }}> ✅ 自動反映 {hrmosSyncPreview.autoApplicableCount}件</span>}
+                                                {hrmosSyncPreview.manualReviewCount > 0 && <span style={{ color: "#ca8a04" }}> ⚠️ 要確認 {hrmosSyncPreview.manualReviewCount}件</span>}
+                                                {(hrmosUnmatchedRecords || []).length > 0 && <span style={{ color: "#dc2626" }}> ❌ 未紐付け {hrmosUnmatchedRecords.length}件</span>}
+                                                {noDataEmployees.length > 0 && <span style={{ color: "#94a3b8" }}> — データなし {noDataEmployees.length}名</span>}
+                                            </>
+                                        )}
+                                    </span>
+                                </div>
+
+                                {/* 全員一覧テーブル */}
+                                <div style={{ maxHeight: 300, overflow: "auto" }}>
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th style={{ width: 110 }}>状態</th>
+                                                <th>従業員名</th>
+                                                <th style={{ width: 80 }}>HRMOS ID</th>
+                                                <th>備考 / 割当先</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {/* ① HRMOSデータあり・紐付け済み */}
+                                            {(hrmosSyncPreview?.rows || []).map((row) => {
+                                                const isAuto = row.matchType === "hrmosId" || row.matchType === "legacyId";
+                                                return (
+                                                    <tr key={row.recordKey}>
+                                                        <td>
+                                                            <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: isAuto ? "#dcfce7" : "#fef3c7", color: isAuto ? "#15803d" : "#92400e" }}>
+                                                                {isAuto ? "✅ 自動反映" : "⚠️ 要確認"}
+                                                            </span>
+                                                        </td>
+                                                        <td>{row.matchedEmployeeName || row.hrmosEmployeeName || "—"}</td>
+                                                        <td className="mono" style={{ fontSize: 11 }}>{row.hrmosEmployeeId || "—"}</td>
+                                                        <td style={{ fontSize: 11, color: "#64748b" }}>{row.matchReason || hrmosMatchTypeLabel(row.matchType)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+
+                                            {/* ② HRMOSデータあり・未紐付け → 割当先を手動選択 */}
+                                            {(hrmosUnmatchedRecords || []).map((row) => (
+                                                <tr key={row.recordKey} style={{ background: "#fff7ed" }}>
+                                                    <td>
+                                                        <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: "#fee2e2", color: "#991b1b" }}>
+                                                            ❌ 未紐付け
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ fontSize: 12 }}>{row.hrmosEmployeeName || "—"}</td>
+                                                    <td className="mono" style={{ fontSize: 11 }}>{row.hrmosEmployeeId || "—"}</td>
+                                                    <td>
+                                                        <select value={row.assignedEmployeeId || ""} onChange={(e) => onSetHrmosUnmatchedAssignment(row.recordKey, e.target.value)} style={{ fontSize: 12 }}>
+                                                            <option value="">— 割当先の従業員を選択 —</option>
+                                                            {activeEmployees.map((emp) => (
+                                                                <option key={emp.id} value={emp.id}>
+                                                                    {emp.name}（{getEmployeeHrmosNumber(emp) || "連携ID未設定"}）
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            ))}
+
+                                            {/* ③ HRMOSにデータなし（手動入力が必要） */}
+                                            {noDataEmployees.map((emp) => (
+                                                <tr key={emp.id} style={{ opacity: 0.5 }}>
+                                                    <td>
+                                                        <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, fontSize: 11, background: "#f1f5f9", color: "#64748b" }}>
+                                                            — データなし
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ fontSize: 12 }}>{emp.name}</td>
+                                                    <td className="mono" style={{ fontSize: 11 }}>{getEmployeeHrmosNumber(emp) || "—"}</td>
+                                                    <td style={{ fontSize: 11, color: "#94a3b8" }}>HRMOSに勤怠データなし（勤怠は手動入力）</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* フッター：警告 + ボタン */}
+                                {hrmosSyncPreview && (
+                                    <div style={{ padding: "8px 12px", borderTop: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                                        <div style={{ fontSize: 11, color: "#92400e", marginBottom: 8 }}>
+                                            ⚠️ 反映すると「基本給調整」「残業手当調整」「その他手当」は <strong>0にリセット</strong>（必要なら反映後に再入力）
+                                        </div>
+                                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                            <button className="btn btn-primary btn-sm" onClick={onApplyHrmosPreview} disabled={hasUnassigned}>
+                                                この内容を反映
+                                            </button>
+                                            {(hrmosUnmatchedRecords || []).some(r => r.assignedEmployeeId) && (
+                                                <button className="btn btn-warning btn-sm" onClick={onApplyHrmosUnmatchedAssignments}>
+                                                    未紐付けの割当を反映
+                                                </button>
+                                            )}
+                                            <button className="btn btn-outline btn-sm" onClick={onClearHrmosPreview}>破棄</button>
+                                            {hasUnassigned && (
+                                                <span style={{ fontSize: 11, color: "#b45309" }}>❌ 未紐付けの割当先をすべて選択してから反映できます</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div style={{ marginTop: 8 }}>
-                                <button className="btn btn-warning btn-sm" onClick={onApplyHrmosUnmatchedAssignments}>選択した割当を反映</button>
-                            </div>
-                        </div>
-                    )}
+                        );
+                    })()}
                 </Collapsible>
             </div>
 
