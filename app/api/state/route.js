@@ -192,19 +192,20 @@ export async function PUT(req) {
         }
 
         // ── J: 確定済み月の改竄防止 ──────────────────────────────────
+        // gross と net のみを保護対象とする。
+        // payDate は支払日の再計算（バグ修正・祝日調整）で正当に変わるため保護対象外。
         if (Array.isArray(body.monthlyHistory)) {
           const currentHistory = current?.data?.monthlyHistory || [];
           for (const confirmed of currentHistory.filter((r) => r.status === "確定")) {
             const incoming = body.monthlyHistory.find((r) => r.month === confirmed.month);
             if (incoming && (
               incoming.gross !== confirmed.gross ||
-              incoming.net !== confirmed.net ||
-              incoming.payDate !== confirmed.payDate
+              incoming.net !== confirmed.net
             )) {
               writeAuditLog(userEmail, "tamper_attempt",
-                `確定済み月 ${confirmed.month} の改竄を検出`).catch(() => {});
+                `確定済み月 ${confirmed.month} の改竄を検出 (gross/net変更)`).catch(() => {});
               return NextResponse.json(
-                { ok: false, message: `確定済み月（${confirmed.month}）のデータは変更できません。` },
+                { ok: false, message: `確定済み月（${confirmed.month}）の総支給・差引支給額は変更できません。` },
                 { status: 403 }
               );
             }
