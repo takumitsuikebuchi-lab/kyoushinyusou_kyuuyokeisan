@@ -236,9 +236,16 @@ export default function App() {
           }),
         });
         if (res.status === 409) {
-          // 別タブから先に保存された — ページリロードを促す
+          // 別タブから先に保存された。
+          // 編集中でなければ自動リロード。編集中ならステータスバーにボタンを表示するにとどめる。
           setHasConflict(true);
-          setSaveStatus("競合 - 要リロード");
+          setSaveStatus("競合");
+          // 3秒待って自動リロード（ユーザーが編集中でない場合のみ）
+          setTimeout(() => {
+            if (!document.querySelector(".inline-edit-panel")) {
+              window.location.reload();
+            }
+          }, 3000);
           return;
         }
         if (!res.ok) throw new Error("failed");
@@ -474,14 +481,6 @@ export default function App() {
     <div className="app-layout">
       <Nav page={page} setPage={setPage} userEmail={userEmail} />
       <main className="app-main">
-        {/* 並行タブ競合バナー */}
-        {hasConflict && (
-          <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 6, padding: "10px 16px", margin: "8px 0", display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
-            <span>⚠️</span>
-            <span style={{ flex: 1 }}>別のタブまたは端末でデータが更新されました。このタブの変更は保存されていません。</span>
-            <button onClick={() => window.location.reload()} style={{ background: "#f59e0b", color: "#fff", border: "none", borderRadius: 4, padding: "4px 12px", cursor: "pointer", fontWeight: 600 }}>リロードして最新を表示</button>
-          </div>
-        )}
         {/* Compact Status Bar */}
         <div className="status-bar">
           <span className={`status-dot ${statusDotClass}`} />
@@ -489,9 +488,18 @@ export default function App() {
           <span style={{ color: "#cbd5e1" }}>|</span>
           <span>{actionText}</span>
           <span style={{ color: "#cbd5e1" }}>|</span>
-          <span style={{ color: (saveStatus === "保存失敗" || saveStatus === "ローカル保存未接続") ? "#dc2626" : saveStatus === "保存中" ? "#f59e0b" : undefined }}>
-            {saveStatus === "ローカル保存未接続" ? "⚠️ 読込失敗（データ保存停止中）" : saveStatus === "保存失敗" ? "⚠️ 保存失敗" : saveStatus}
-          </span>
+          {hasConflict ? (
+            <button
+              onClick={() => window.location.reload()}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#f59e0b", fontWeight: 600, fontSize: "inherit", padding: 0 }}
+            >
+              ↻ 更新して最新を取得
+            </button>
+          ) : (
+            <span style={{ color: (saveStatus === "保存失敗" || saveStatus === "ローカル保存未接続") ? "#dc2626" : saveStatus === "保存中" ? "#f59e0b" : undefined }}>
+              {saveStatus === "ローカル保存未接続" ? "⚠️ 読込失敗" : saveStatus === "保存失敗" ? "⚠️ 保存失敗" : saveStatus}
+            </span>
+          )}
         </div>
 
 
